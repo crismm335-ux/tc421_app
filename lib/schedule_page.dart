@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'controller.dart';
+import 'curve_editor.dart';
 import 'manual_page.dart' show channelColors;
-
-String _timeLabel(int index) {
-  final h = (index ~/ 2).toString().padLeft(2, '0');
-  return '$h:${index.isEven ? '00' : '30'}';
-}
 
 class SchedulePage extends StatelessWidget {
   const SchedulePage({super.key, required this.controller});
@@ -17,11 +13,58 @@ class SchedulePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final uploading = controller.uploadProgress != null;
     final message = controller.uploadMessage;
+    final textStyle = Theme.of(context).textTheme.bodySmall;
 
     return Column(
       children: [
+        // Escolha do canal que está sendo editado.
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+          child: Row(
+            children: [
+              const Text('Canal'),
+              const SizedBox(width: 8),
+              for (var c = 0; c < channelColors.length; c++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    avatar: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: channelColors[c],
+                    ),
+                    label: Text('${c + 1}'),
+                    selected: controller.selectedChannel == c,
+                    onSelected: (_) => controller.selectChannel(c),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // O gráfico ocupa o espaço que sobra.
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: CurveEditor(
+              curves: controller.curves,
+              colors: channelColors,
+              selected: controller.selectedChannel,
+              onChanged: controller.curvesChanged,
+            ),
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Arraste um ponto: para os lados muda o horário, para cima e para baixo muda a intensidade. '
+            'Toque num espaço vazio para criar um ponto; segure um ponto para apagar.',
+            style: textStyle,
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Wrap(
             spacing: 8,
             children: [
@@ -39,9 +82,14 @@ class SchedulePage extends StatelessWidget {
                 onPressed: () =>
                     controller.applyPreset(SchedulePreset.allOff),
               ),
+              ActionChip(
+                label: const Text('Copiar para todos os canais'),
+                onPressed: controller.copyCurveToAll,
+              ),
             ],
           ),
         ),
+
         if (uploading)
           Padding(
             padding: const EdgeInsets.all(12),
@@ -52,16 +100,7 @@ class SchedulePage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(message),
           ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: controller.schedule.length,
-            itemBuilder: (context, i) => _PointRow(
-              index: i,
-              values: controller.schedule[i],
-              onTap: () => _editPoint(context, i),
-            ),
-          ),
-        ),
+
         SafeArea(
           top: false,
           child: Padding(
@@ -79,94 +118,6 @@ class SchedulePage extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  void _editPoint(BuildContext context, int index) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_timeLabel(index),
-                  style: Theme.of(context).textTheme.titleLarge),
-              for (var c = 0; c < controller.schedule[index].length; c++)
-                Row(
-                  children: [
-                    SizedBox(width: 72, child: Text('Canal ${c + 1}')),
-                    Expanded(
-                      child: Slider(
-                        value: controller.schedule[index][c].toDouble(),
-                        min: 0,
-                        max: 100,
-                        divisions: 100,
-                        activeColor: channelColors[c],
-                        onChanged: (v) =>
-                            controller.setPoint(index, c, v.round()),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 48,
-                      child: Text('${controller.schedule[index][c]}%',
-                          textAlign: TextAlign.end),
-                    ),
-                  ],
-                ),
-              TextButton(
-                onPressed: () => controller.copyPointToAll(index),
-                child: const Text('Copiar para todos os horários'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PointRow extends StatelessWidget {
-  const _PointRow({
-    required this.index,
-    required this.values,
-    required this.onTap,
-  });
-
-  final int index;
-  final List<int> values;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: Row(
-          children: [
-            SizedBox(width: 56, child: Text(_timeLabel(index))),
-            for (var c = 0; c < values.length; c++)
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: values[c] / 100,
-                      minHeight: 12,
-                      color: channelColors[c],
-                      backgroundColor: channelColors[c].withAlpha(38),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'curve.dart';
 import 'tc421_client.dart';
 import 'tc421_protocol.dart';
 
@@ -24,11 +25,19 @@ class Tc421Controller extends ChangeNotifier {
   Timer? _liveTimer;
   bool _liveDirty = false;
 
-  // Cronograma: 48 pontos x 5 canais
-  final List<List<int>> schedule = List.generate(
-    Tc421Protocol.pointCount,
-    (_) => List.filled(Tc421Protocol.channelCount, 0),
-  );
+  // Cronograma: uma curva por canal (pontos arrastáveis no gráfico).
+  final List<DayCurve> curves =
+      List.generate(Tc421Protocol.channelCount, (_) => DayCurve.daylight());
+  int selectedChannel = 0;
+
+  /// Os 48 valores (um a cada 30 min) x 5 canais que a controladora recebe.
+  List<List<int>> get schedule => List.generate(
+        Tc421Protocol.pointCount,
+        (i) => List.generate(
+          Tc421Protocol.channelCount,
+          (c) => curves[c].valueAt(i * minuteStep),
+        ),
+      );
   double? uploadProgress;
   String? uploadMessage;
 
@@ -135,38 +144,32 @@ class Tc421Controller extends ChangeNotifier {
 
   // ---- Cronograma ---------------------------------------------------------
 
-  void setPoint(int index, int channel, int value) {
-    schedule[index][channel] = value;
+  void selectChannel(int channel) {
+    selectedChannel = channel;
     notifyListeners();
   }
 
-  void copyPointToAll(int index) {
-    final src = List<int>.from(schedule[index]);
-    for (final row in schedule) {
-      row.setAll(0, src);
+  /// Chamado pelo gráfico quando um ponto muda.
+  void curvesChanged() => notifyListeners();
+
+  /// Copia a curva do canal escolhido para todos os outros.
+  void copyCurveToAll() {
+    final src = curves[selectedChannel];
+    for (var c = 0; c < curves.length; c++) {
+      if (c != selectedChannel) curves[c] = src.copy();
     }
     notifyListeners();
   }
 
   void applyPreset(SchedulePreset preset) {
-    for (var i = 0; i < schedule.length; i++) {
-      final minutes = i * 30;
-      final level = switch (preset) {
-        SchedulePreset.allOn => 100,
-        SchedulePreset.allOff => 0,
-        SchedulePreset.daylight => _daylight(minutes),
+    for (var c = 0; c < curves.length; c++) {
+      curves[c] = switch (preset) {
+        SchedulePreset.allOn => DayCurve.flat(100),
+        SchedulePreset.allOff => DayCurve.flat(0),
+        SchedulePreset.daylight => DayCurve.daylight(),
       };
-      schedule[i].fillRange(0, schedule[i].length, level);
     }
     notifyListeners();
-  }
-
-  /// Sobe de 07:00 a 09:00, fica em 100% até 19:00 e desce até 21:00.
-  int _daylight(int m) {
-    if (m < 420 || m >= 1260) return 0;
-    if (m < 540) return ((m - 420) * 100 / 120).round();
-    if (m < 1140) return 100;
-    return ((1260 - m) * 100 / 120).round();
   }
 
   Future<void> uploadSchedule() async {
