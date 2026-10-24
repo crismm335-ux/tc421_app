@@ -1,0 +1,47 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Gerar o projeto Windows
+        shell: bash
+        run: |
+          flutter config --enable-windows-desktop
+          flutter create --project-name tc421_app --platforms=windows --org br.fisionit .
+          rm -f test/widget_test.dart
+
+      - name: Baixar dependências
+        run: flutter pub get
+
+      # Os testes conferem os pacotes UDP. Se falharem, o programa ainda é gerado.
+      - name: Testes dos pacotes
+        continue-on-error: true
+        run: flutter test
+
+      - name: Compilar
+        run: flutter build windows --release
+
+      - name: Empacotar
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath tc421-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tc421-windows
+          path: tc421-windows.zip
+          retention-days: 30
