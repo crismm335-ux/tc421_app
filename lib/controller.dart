@@ -25,6 +25,13 @@ class Tc421Controller extends ChangeNotifier {
   Timer? _liveTimer;
   bool _liveDirty = false;
 
+  // Simulação do dia inteiro na luminária (acelerada).
+  bool simulating = false;
+  int simSeconds = 30; // quanto tempo o dia de 24 h leva na simulação
+  int simMinute = 0; // horário simulado agora (0..1440)
+  Timer? _simTimer;
+  final Stopwatch _simClock = Stopwatch();
+
   // Cronograma: uma curva por canal (pontos arrastáveis no gráfico).
   final List<DayCurve> curves =
       List.generate(Tc421Protocol.channelCount, (_) => DayCurve.daylight());
@@ -144,6 +151,60 @@ class Tc421Controller extends ChangeNotifier {
 
   // ---- Cronograma ---------------------------------------------------------
 
+  void setSimSeconds(int seconds) {
+    simSeconds = seconds;
+    notifyListeners();
+  }
+
+  /// Faz a luminária percorrer as 24 h do cronograma em [simSeconds] segundos.
+  /// Usa o modo ao vivo (experimental); ao terminar ou parar, a controladora
+  /// volta ao cronograma que está salvo nela.
+  Future<void> startSimulation() async {
+    if (!connected || simulating) return;
+    liveActive = false;
+    simulating = true;
+    simMinute = 0;
+    notifyListeners();
+
+    _client.beginLive();
+    // A controladora precisa de um instante para entrar no modo ao vivo.
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (!simulating) return; // foi parada nesse meio tempo
+
+    _simClock
+      ..reset()
+      ..start();
+    _simTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _simTick(),
+    );
+  }
+
+  void _simTick() {
+    final total = simSeconds * 1000;
+    final elapsed = _simClock.elapsedMilliseconds;
+    if (elapsed >= total) {
+      stopSimulation();
+      return;
+    }
+    simMinute = elapsed * dayMinutes ~/ total;
+    _client.sendLive(List.generate(
+      Tc421Protocol.channelCount,
+      (c) => curves[c].valueAt(simMinute),
+    ));
+    notifyListeners();
+  }
+
+  void stopSimulation() {
+    if (!simulating) return;
+    _simTimer?.cancel();
+    _simTimer = null;
+    _simClock.stop();
+    simulating = false;
+    _client.endLive();
+    notifyListeners();
+  }
+
   void selectChannel(int channel) {
     selectedChannel = channel;
     notifyListeners();
@@ -193,6 +254,7 @@ class Tc421Controller extends ChangeNotifier {
   @override
   void dispose() {
     _liveTimer?.cancel();
+    _simTimer?.cancel();
     _client.close();
     super.dispose();
   }

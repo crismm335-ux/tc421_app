@@ -38,12 +38,20 @@ class CurveEditor extends StatefulWidget {
     required this.colors,
     required this.selected,
     required this.onChanged,
+    this.playhead,
+    this.enabled = true,
   });
 
   final List<DayCurve> curves;
   final List<Color> colors;
   final int selected;
   final VoidCallback onChanged;
+
+  /// Horário (minutos) da linha que anda durante a simulação; null = sem linha.
+  final int? playhead;
+
+  /// false trava a edição (durante a simulação).
+  final bool enabled;
 
   @override
   State<CurveEditor> createState() => _CurveEditorState();
@@ -77,7 +85,9 @@ class _CurveEditorState extends State<CurveEditor> {
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final g = ChartGeometry(size);
-        return GestureDetector(
+        return IgnorePointer(
+          ignoring: !widget.enabled,
+          child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (d) {
             setState(() => _drag = _hit(d.localPosition, size));
@@ -119,7 +129,9 @@ class _CurveEditorState extends State<CurveEditor> {
               textColor: scheme.onSurfaceVariant,
               tooltipColor: scheme.inverseSurface,
               tooltipTextColor: scheme.onInverseSurface,
+              playhead: widget.playhead,
             ),
+          ),
           ),
         );
       },
@@ -137,6 +149,7 @@ class _CurvePainter extends CustomPainter {
     required this.textColor,
     required this.tooltipColor,
     required this.tooltipTextColor,
+    this.playhead,
   });
 
   final List<DayCurve> curves;
@@ -147,6 +160,7 @@ class _CurvePainter extends CustomPainter {
   final Color textColor;
   final Color tooltipColor;
   final Color tooltipTextColor;
+  final int? playhead;
 
   TextPainter _label(String text, double fontSize, Color color) {
     return TextPainter(
@@ -239,6 +253,43 @@ class _CurvePainter extends CustomPainter {
           ..strokeWidth = 2.5
           ..color = Colors.white,
       );
+    }
+
+    // Simulação: linha que anda, com a intensidade de cada canal naquele horário.
+    final ph = playhead;
+    if (ph != null) {
+      final x = g.toPixel(ph, 0).dx;
+      canvas.drawLine(
+        Offset(x, plot.top),
+        Offset(x, plot.bottom),
+        Paint()
+          ..color = textColor
+          ..strokeWidth = 2,
+      );
+      for (var c = 0; c < curves.length; c++) {
+        final o = g.toPixel(ph, curves[c].valueAt(ph));
+        canvas.drawCircle(o, 6, Paint()..color = colors[c]);
+        canvas.drawCircle(
+          o,
+          6,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = Colors.white,
+        );
+      }
+      final t = _label(timeLabel(ph), 13, tooltipTextColor);
+      final w = t.width + 16;
+      final h = t.height + 8;
+      var left = x - w / 2;
+      if (left < plot.left) left = plot.left;
+      if (left + w > size.width) left = size.width - w;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, 0, w, h), const Radius.circular(8)),
+        Paint()..color = tooltipColor,
+      );
+      t.paint(canvas, Offset(left + 8, 4));
     }
 
     // Etiqueta com horário e intensidade do ponto que está sendo arrastado.

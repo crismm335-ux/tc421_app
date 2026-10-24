@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'controller.dart';
+import 'curve.dart' show timeLabel;
 import 'curve_editor.dart';
 import 'manual_page.dart' show channelColors;
 
@@ -50,7 +51,52 @@ class SchedulePage extends StatelessWidget {
               colors: channelColors,
               selected: controller.selectedChannel,
               onChanged: controller.curvesChanged,
+              playhead: controller.simulating ? controller.simMinute : null,
+              enabled: !controller.simulating,
             ),
+          ),
+        ),
+
+        // Simulação do dia inteiro na luminária.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  icon: Icon(
+                      controller.simulating ? Icons.stop : Icons.play_arrow),
+                  label: Text(controller.simulating
+                      ? 'Parar ${timeLabel(controller.simMinute)}'
+                      : 'Simular o dia'),
+                  onPressed: !controller.connected
+                      ? null
+                      : (controller.simulating
+                          ? controller.stopSimulation
+                          : controller.startSimulation),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 15, label: Text('15s')),
+                  ButtonSegment(value: 30, label: Text('30s')),
+                  ButtonSegment(value: 60, label: Text('60s')),
+                ],
+                selected: {controller.simSeconds},
+                onSelectionChanged: controller.simulating
+                    ? null
+                    : (s) => controller.setSimSeconds(s.first),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+          child: Text(
+            'Percorre as 24 h na luminária e depois volta ao cronograma salvo (experimental).',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
 
@@ -65,7 +111,9 @@ class SchedulePage extends StatelessWidget {
 
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Wrap(
             spacing: 8,
             children: [
               ActionChip(
@@ -87,6 +135,7 @@ class SchedulePage extends StatelessWidget {
                 onPressed: controller.copyCurveToAll,
               ),
             ],
+          ),
           ),
         ),
 
