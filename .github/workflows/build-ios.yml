@@ -1,0 +1,48 @@
+name: Build iOS (sem assinatura)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Gerar o projeto iOS
+        run: |
+          flutter create --project-name tc421_app --platforms=ios --org br.fisionit .
+          rm -f test/widget_test.dart
+          perl -0pi -e 's|</dict>\s*</plist>|\t<key>NSLocalNetworkUsageDescription</key>\n\t<string>Para encontrar e controlar a controladora TC421 na sua rede.</string>\n</dict>\n</plist>|' ios/Runner/Info.plist
+
+      - name: Baixar dependências
+        run: flutter pub get
+
+      # Os testes conferem os pacotes UDP. Se falharem, o .ipa ainda é gerado,
+      # mas o passo fica marcado com aviso na tela da execução.
+      - name: Testes dos pacotes
+        continue-on-error: true
+        run: flutter test
+
+      - name: Compilar (sem assinatura)
+        run: flutter build ios --release --no-codesign
+
+      - name: Montar o .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr tc421.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tc421-ipa
+          path: tc421.ipa
+          retention-days: 30

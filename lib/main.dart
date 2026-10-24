@@ -39,7 +39,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    controller.connect();
+    controller.loadSettings().then((_) => controller.connect());
   }
 
   @override
@@ -115,6 +115,11 @@ class _ConnectionCard extends StatelessWidget {
                   onPressed: controller.syncTime,
                 ),
               IconButton(
+                tooltip: 'IP da controladora',
+                icon: const Icon(Icons.settings_ethernet),
+                onPressed: () => _askIp(context),
+              ),
+              IconButton(
                 tooltip: 'Procurar novamente',
                 icon: const Icon(Icons.refresh),
                 onPressed: controller.connect,
@@ -124,5 +129,43 @@ class _ConnectionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _askIp(BuildContext context) async {
+    final field = TextEditingController(text: controller.manualIp ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('IP da controladora'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Veja o IP no painel do seu roteador (lista de aparelhos conectados). Deixe vazio para procurar por broadcast.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: field,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: '192.168.0.50',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, field.text),
+            child: const Text('Conectar'),
+          ),
+        ],
+      ),
+    );
+    if (result != null) await controller.setManualIp(result);
   }
 }

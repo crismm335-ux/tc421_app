@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'tc421_client.dart';
 import 'tc421_protocol.dart';
@@ -30,16 +32,48 @@ class Tc421Controller extends ChangeNotifier {
   double? uploadProgress;
   String? uploadMessage;
 
+  /// IP informado pelo usuário (null = busca por broadcast).
+  String? manualIp;
+
+  Future<void> loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    manualIp = prefs.getString('controller_ip');
+  }
+
+  Future<void> setManualIp(String? ip) async {
+    final text = ip?.trim() ?? '';
+    final prefs = await SharedPreferences.getInstance();
+    if (text.isEmpty) {
+      await prefs.remove('controller_ip');
+      manualIp = null;
+    } else {
+      await prefs.setString('controller_ip', text);
+      manualIp = text;
+    }
+    await connect();
+  }
+
   Future<void> connect() async {
     if (searching) return;
     searching = true;
-    status = 'Procurando a controladora...';
+    status = manualIp == null
+        ? 'Procurando a controladora...'
+        : 'Conectando em $manualIp...';
     notifyListeners();
     try {
+      _client.setTarget(manualIp);
       final mac = await _client.discover();
-      status = mac == null
-          ? 'Não encontrei a controladora. Confira se o celular está no mesmo WiFi dela.'
-          : 'Conectado: $mac';
+      if (mac != null) {
+        status = 'Conectado: $mac';
+      } else if (manualIp != null) {
+        status = 'Sem resposta de $manualIp. Confira o IP e se o celular está no mesmo WiFi.';
+      } else if (Platform.isIOS) {
+        status = 'Não achei por broadcast (o iPhone limita isso). Toque no ícone de rede e informe o IP da controladora.';
+      } else {
+        status = 'Não encontrei a controladora. Confira se o celular está no mesmo WiFi dela.';
+      }
+    } on FormatException catch (e) {
+      status = e.message;
     } catch (e) {
       status = 'Erro de rede: $e';
     }

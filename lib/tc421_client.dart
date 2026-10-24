@@ -13,7 +13,25 @@ class Tc421Client {
   final StreamController<Uint8List> _incoming = StreamController.broadcast();
   String? mac;
 
+  /// IP da controladora. Se for null, os pacotes saem em broadcast.
+  /// No iPhone o broadcast exige uma permissão da Apple, então use o IP.
+  InternetAddress? target;
+
   bool get isOpen => _socket != null;
+
+  /// Define o IP de destino. Texto vazio volta ao broadcast.
+  void setTarget(String? ip) {
+    final text = ip?.trim() ?? '';
+    if (text.isEmpty) {
+      target = null;
+      return;
+    }
+    final parsed = InternetAddress.tryParse(text);
+    if (parsed == null || parsed.type != InternetAddressType.IPv4) {
+      throw FormatException('IP inválido: $text');
+    }
+    target = parsed;
+  }
 
   Future<void> open() async {
     if (_socket != null) return;
@@ -43,8 +61,8 @@ class Tc421Client {
   }
 
   void _send(Uint8List packet) {
-    _socket!.send(
-        packet, InternetAddress('255.255.255.255'), Tc421Protocol.port);
+    _socket!.send(packet, target ?? InternetAddress('255.255.255.255'),
+        Tc421Protocol.port);
   }
 
   /// Envia [packet] e espera uma resposta aceita por [accept].
