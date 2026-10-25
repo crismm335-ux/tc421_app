@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'aqua.dart';
+import 'aquarium.dart';
 import 'controller.dart';
+import 'equipment_page.dart';
 import 'home_page.dart';
 import 'manual_page.dart';
 import 'profiles_page.dart';
@@ -34,17 +36,20 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final Tc421Controller controller = Tc421Controller();
+  final AquariumController aquarium = AquariumController();
   int tab = 0;
 
   @override
   void initState() {
     super.initState();
     controller.loadSettings().then((_) => controller.connect());
+    aquarium.start();
   }
 
   @override
   void dispose() {
     controller.dispose();
+    aquarium.dispose();
     super.dispose();
   }
 
@@ -53,13 +58,14 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, aquarium]),
       builder: (context, _) {
         // Só a aba aberta é montada.
         final Widget page = switch (tab) {
           0 => HomePage(controller: controller, onGo: _go),
           1 => ManualPage(controller: controller),
           2 => SchedulePage(controller: controller),
+          4 => EquipmentPage(aquarium: aquarium),
           _ => ProfilesPage(controller: controller),
         };
         return Scaffold(
@@ -86,6 +92,8 @@ class _HomeShellState extends State<HomeShell> {
                   icon: Icon(Icons.schedule), label: 'Programação'),
               NavigationDestination(
                   icon: Icon(Icons.star_border), label: 'Perfis'),
+              NavigationDestination(
+                  icon: Icon(Icons.water_outlined), label: 'Aquário'),
             ],
           ),
         );

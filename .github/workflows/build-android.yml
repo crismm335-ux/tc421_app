@@ -27,7 +27,7 @@ jobs:
           flutter create --project-name tc421_app --platforms=android --org br.fisionit .
           rm -f test/widget_test.dart
           # O app precisa de rede; a permissão vem só na versão de depuração por padrão.
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"|' android/app/src/main/AndroidManifest.xml
 
       - name: Baixar dependências
         run: flutter pub get

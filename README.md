@@ -60,3 +60,7 @@ Funciona por broadcast, sem precisar informar o IP. APK: `flutter build apk --re
   enviados direto ao IP dela; é o primeiro teste a fazer no iPhone.
 - O modo "ao vivo" não está terminado no repositório de referência.
 - Se algo não responder, o status do app mostra onde parou.
+
+## Aquário completo (ESP32)
+
+A pasta `firmware/` tem o programa do ESP32 que controla as tomadas, temperatura, pH, salinidade e reposição. Leia `firmware/LEIAME.md` (peças, ligações, segurança e calibração). No app, a aba **Aquário** conversa com ele pelo IP.
