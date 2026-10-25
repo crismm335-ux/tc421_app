@@ -101,7 +101,7 @@ class EquipmentPage extends StatelessWidget {
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.thermostat, size: 18),
-                label: const Text('Termostato'),
+                label: const Text('Controle de temperatura'),
                 onPressed: () => _thermoDialog(context),
               ),
               OutlinedButton.icon(
@@ -198,7 +198,7 @@ class EquipmentPage extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Termostato'),
+        title: const Text('Controle de temperatura'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

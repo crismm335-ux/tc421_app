@@ -171,28 +171,7 @@ class HomePage extends StatelessWidget {
               const Text('CENTRAL DE ILUMINAÇÃO',
                   style: TextStyle(
                       fontSize: 10, letterSpacing: 2, color: Aqua.muted)),
-              const SizedBox(height: 8),
-              const Text.rich(
-                TextSpan(
-                  text: 'Seu recife, sob\n',
-                  children: [
-                    TextSpan(
-                        text: 'a luz ideal.',
-                        style: TextStyle(color: Aqua.cyan)),
-                  ],
-                ),
-                style: TextStyle(
-                    fontSize: 32,
-                    height: 1.1,
-                    fontWeight: FontWeight.w800,
-                    color: Aqua.text),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Programe o fotoperíodo, ajuste os cinco canais e veja a curva de iluminação ao longo de 24 horas.',
-                style: TextStyle(color: Color(0xFFB7D7F2)),
-              ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   _Stat('Canal', channelNames[ch]),
@@ -331,41 +310,18 @@ class _AquariumSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionTitle('Equipamentos'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final o in a.outlets)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Aqua.field,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: o.on ? Aqua.cyan : Aqua.line),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color:
-                                  o.on ? Aqua.cyan : const Color(0xFF2A4258),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(o.name,
-                              style: const TextStyle(
-                                  fontSize: 12, color: Aqua.text)),
-                        ],
-                      ),
-                    ),
-                ],
+              const SectionTitle('Níveis de água'),
+              _LevelRow(
+                'Sump',
+                a.tpaMinLevel
+                    ? 'Nível mínimo'
+                    : (a.atoSumpLow ? 'Baixo, repondo' : 'Normal'),
+                warn: a.tpaMinLevel || a.atoSumpLow,
+              ),
+              _LevelRow(
+                'Galão de reposição',
+                a.atoReservoirEmpty ? 'Vazio' : 'Com água',
+                warn: a.atoReservoirEmpty,
               ),
               if (running) ...[
                 const SizedBox(height: 10),
@@ -388,6 +344,36 @@ class _AquariumSummary extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LevelRow extends StatelessWidget {
+  const _LevelRow(this.name, this.state, {this.warn = false});
+
+  final String name;
+  final String state;
+  final bool warn;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = warn ? const Color(0xFFFFB347) : Aqua.cyan;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(name, style: const TextStyle(color: Aqua.text))),
+          Text(state,
+              style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }

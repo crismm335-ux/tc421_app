@@ -37,7 +37,8 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   final Tc421Controller controller = Tc421Controller();
   final AquariumController aquarium = AquariumController();
-  int tab = 0;
+  int tab = 0; // 0 Início, 1 Luminária, 2 Aquário
+  int lumSub = 1; // 0 Canais, 1 Programação, 2 Perfis
 
   @override
   void initState() {
@@ -53,7 +54,18 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
-  void _go(int index) => setState(() => tab = index);
+  /// Códigos usados pelos botões das telas: 0 início, 1 canais,
+  /// 2 programação, 3 perfis, 4 aquário.
+  void _go(int code) => setState(() {
+        if (code == 0) {
+          tab = 0;
+        } else if (code == 4) {
+          tab = 2;
+        } else {
+          tab = 1;
+          lumSub = code - 1;
+        }
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -63,10 +75,35 @@ class _HomeShellState extends State<HomeShell> {
         // Só a aba aberta é montada.
         final Widget page = switch (tab) {
           0 => HomePage(controller: controller, aquarium: aquarium, onGo: _go),
-          1 => ManualPage(controller: controller),
-          2 => SchedulePage(controller: controller),
-          4 => EquipmentPage(aquarium: aquarium),
-          _ => ProfilesPage(controller: controller),
+          1 => Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<int>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text('Canais')),
+                        ButtonSegment(value: 1, label: Text('Programação')),
+                        ButtonSegment(value: 2, label: Text('Perfis')),
+                      ],
+                      selected: {lumSub},
+                      onSelectionChanged: (s) =>
+                          setState(() => lumSub = s.first),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: switch (lumSub) {
+                    0 => ManualPage(controller: controller),
+                    1 => SchedulePage(controller: controller),
+                    _ => ProfilesPage(controller: controller),
+                  },
+                ),
+              ],
+            ),
+          _ => EquipmentPage(aquarium: aquarium),
         };
         return Scaffold(
           backgroundColor: Aqua.bg,
@@ -83,15 +120,13 @@ class _HomeShellState extends State<HomeShell> {
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: tab,
-            onDestinationSelected: _go,
+            // Luminária reabre na última aba usada.
+            onDestinationSelected: (i) => setState(() => tab = i),
             destinations: const [
               NavigationDestination(
                   icon: Icon(Icons.home_outlined), label: 'Início'),
-              NavigationDestination(icon: Icon(Icons.tune), label: 'Canais'),
               NavigationDestination(
-                  icon: Icon(Icons.schedule), label: 'Programação'),
-              NavigationDestination(
-                  icon: Icon(Icons.star_border), label: 'Perfis'),
+                  icon: Icon(Icons.lightbulb_outline), label: 'Luminária'),
               NavigationDestination(
                   icon: Icon(Icons.water_outlined), label: 'Aquário'),
             ],
