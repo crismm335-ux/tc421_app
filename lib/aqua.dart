@@ -100,9 +100,6 @@ class AquaPanel extends StatelessWidget {
             : null,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Aqua.line),
-        boxShadow: const [
-          BoxShadow(color: Color(0x44000000), blurRadius: 24, offset: Offset(0, 8)),
-        ],
       ),
       child: child,
     );

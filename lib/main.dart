@@ -55,12 +55,13 @@ class _HomeShellState extends State<HomeShell> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final pages = <Widget>[
-          HomePage(controller: controller, onGo: _go),
-          ManualPage(controller: controller),
-          SchedulePage(controller: controller),
-          ProfilesPage(controller: controller),
-        ];
+        // Só a aba aberta é montada.
+        final Widget page = switch (tab) {
+          0 => HomePage(controller: controller, onGo: _go),
+          1 => ManualPage(controller: controller),
+          2 => SchedulePage(controller: controller),
+          _ => ProfilesPage(controller: controller),
+        };
         return Scaffold(
           backgroundColor: Aqua.bg,
           body: AquaBackground(
@@ -69,7 +70,7 @@ class _HomeShellState extends State<HomeShell> {
               child: Column(
                 children: [
                   _Header(controller: controller),
-                  Expanded(child: pages[tab]),
+                  Expanded(child: RepaintBoundary(child: page)),
                 ],
               ),
             ),

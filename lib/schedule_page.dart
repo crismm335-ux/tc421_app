@@ -101,7 +101,8 @@ class _SchedulePageState extends State<SchedulePage> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: Aqua.line),
                 ),
-                child: Listener(
+                child: RepaintBoundary(
+                  child: Listener(
                   onPointerDown: (_) => setState(() => _touchingChart = true),
                   onPointerUp: (_) => setState(() => _touchingChart = false),
                   onPointerCancel: (_) =>
@@ -115,6 +116,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     onChanged: c.curvesChanged,
                     playhead: c.simulating ? c.simMinute : null,
                     enabled: !c.simulating,
+                  ),
                   ),
                 ),
               ),
@@ -208,7 +210,7 @@ class _SchedulePageState extends State<SchedulePage> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Toque num espaço vazio do gráfico para criar um ponto e segure um ponto para apagar. Os pontos de 00:00 e 24:00 não saem.',
+                'Toque num espaço vazio do gráfico para criar um ponto e dê dois toques (ou segure) num ponto para apagar. Os pontos de 00:00 e 24:00 não saem.',
                 style: muted,
               ),
             ],

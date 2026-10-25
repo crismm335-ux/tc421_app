@@ -30,7 +30,7 @@ class ChartGeometry {
 
 /// Gráfico do dia: arraste um ponto para os lados (horário) e para cima ou
 /// para baixo (intensidade). Toque num espaço vazio para criar um ponto e
-/// segure um ponto para apagar.
+/// dê dois toques (ou segure) num ponto para apagar.
 class CurveEditor extends StatefulWidget {
   const CurveEditor({
     super.key,
@@ -65,6 +65,7 @@ class CurveEditor extends StatefulWidget {
 
 class _CurveEditorState extends State<CurveEditor> {
   int? _drag;
+  Offset _lastTap = Offset.zero;
 
   DayCurve get _curve => widget.curves[widget.selected];
 
@@ -122,6 +123,13 @@ class _CurveEditorState extends State<CurveEditor> {
               widget.onChanged();
               widget.onPointSelected?.call(i);
             }
+          },
+          onDoubleTapDown: (d) => _lastTap = d.localPosition,
+          onDoubleTap: () {
+            final i = _hit(_lastTap, size);
+            if (i == null) return;
+            _curve.removeAt(i);
+            widget.onChanged();
           },
           onLongPressStart: (d) {
             final i = _hit(d.localPosition, size);
