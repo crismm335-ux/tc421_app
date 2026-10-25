@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -33,9 +34,10 @@ class Tc421Controller extends ChangeNotifier {
   final Stopwatch _simClock = Stopwatch();
 
   // Cronograma: uma curva por canal (pontos arrastáveis no gráfico).
-  final List<DayCurve> curves =
-      List.generate(Tc421Protocol.channelCount, (_) => DayCurve.daylight());
+  final List<DayCurve> curves = profileCurves('Recife Natural')!;
   int selectedChannel = 0;
+  int selectedPoint = 0;
+  String profileName = 'Recife Natural';
 
   /// Os 48 valores (um a cada 30 min) x 5 canais que a controladora recebe.
   List<List<int>> get schedule => List.generate(
@@ -207,11 +209,143 @@ class Tc421Controller extends ChangeNotifier {
 
   void selectChannel(int channel) {
     selectedChannel = channel;
+    _clampPoint();
+    notifyListeners();
+  }
+
+  DayCurve get currentCurve => curves[selectedChannel];
+
+  void _clampPoint() {
+    final last = currentCurve.points.length - 1;
+    if (selectedPoint > last) selectedPoint = last;
+    if (selectedPoint < 0) selectedPoint = 0;
+  }
+
+  void selectPoint(int index) {
+    selectedPoint = index;
+    _clampPoint();
     notifyListeners();
   }
 
   /// Chamado pelo gráfico quando um ponto muda.
-  void curvesChanged() => notifyListeners();
+  void curvesChanged() {
+    _clampPoint();
+    notifyListeners();
+  }
+
+  int get pointCount => currentCurve.points.length;
+
+  /// Intensidade média (0..100) do canal escolhido ao longo do dia.
+  int get averageIntensity {
+    var sum = 0;
+    for (var m = 0; m < dayMinutes; m += minuteStep) {
+      sum += currentCurve.valueAt(m);
+    }
+    return (sum / (dayMinutes / minuteStep)).round();
+  }
+
+  void setSelectedPointMinute(int minute) {
+    final p = currentCurve.points[selectedPoint];
+    currentCurve.move(selectedPoint, minute, p.value);
+    notifyListeners();
+  }
+
+  void setSelectedPointValue(int value) {
+    final p = currentCurve.points[selectedPoint];
+    currentCurve.move(selectedPoint, p.minute, value);
+    notifyListeners();
+  }
+
+  /// Cria um ponto ao lado do selecionado (30 min depois, ou antes se não couber).
+  bool addPointNearSelected() {
+    final p = currentCurve.points[selectedPoint];
+    var i = -1;
+    if (p.minute + minuteStep <= dayMinutes) {
+      i = currentCurve.addPoint(p.minute + minuteStep, p.value);
+    }
+    if (i < 0 && p.minute - minuteStep >= 0) {
+      i = currentCurve.addPoint(p.minute - minuteStep, p.value);
+    }
+    if (i < 0) return false;
+    selectedPoint = i;
+    notifyListeners();
+    return true;
+  }
+
+  /// Só os pontos do meio podem sair; 00:00 e 24:00 ficam.
+  bool get canRemoveSelected =>
+      selectedPoint > 0 && selectedPoint < pointCount - 1;
+
+  void removeSelectedPoint() {
+    if (!canRemoveSelected) return;
+    currentCurve.removeAt(selectedPoint);
+    selectedPoint -= 1;
+    _clampPoint();
+    notifyListeners();
+  }
+
+  /// Aplica um perfil pronto (curvas dos 5 canais).
+  void applyProfile(String name) {
+    final made = profileCurves(name);
+    if (made == null) return;
+    for (var c = 0; c < curves.length; c++) {
+      curves[c] = made[c];
+    }
+    profileName = name;
+    selectedPoint = 0;
+    notifyListeners();
+  }
+
+  /// JSON no mesmo formato do protótipo Aqua Light: horários em horas.
+  String exportJson() => const JsonEncoder.withIndent('  ').convert({
+        'app': 'Aqua Light TC421',
+        'version': 1,
+        'profile': profileName,
+        'data': [
+          for (final c in curves)
+            [
+              for (final p in c.points) {'t': p.minute / 60, 'v': p.value}
+            ]
+        ],
+      });
+
+  /// Devolve null se deu certo, ou a mensagem de erro.
+  String? importJson(String text) {
+    try {
+      final j = jsonDecode(text);
+      final data = j is Map ? j['data'] : null;
+      if (data is! List || data.length != Tc421Protocol.channelCount) {
+        return 'JSON inválido: precisa ter 5 canais.';
+      }
+      final made = <DayCurve>[];
+      for (final ch in data) {
+        final pts = <CurvePoint>[];
+        for (final p in (ch as List)) {
+          final minute = snapMinute((p['t'] as num) * 60);
+          final value = ((p['v'] as num).round()).clamp(0, 100).toInt();
+          if (pts.any((q) => q.minute == minute)) continue;
+          pts.add(CurvePoint(minute, value));
+        }
+        if (pts.length < 2) return 'JSON inválido: poucos pontos num canal.';
+        pts.sort((a, b) => a.minute.compareTo(b.minute));
+        if (pts.first.minute > 0) pts.insert(0, CurvePoint(0, pts.first.value));
+        if (pts.last.minute < dayMinutes) {
+          pts.add(CurvePoint(dayMinutes, pts.last.value));
+        }
+        made.add(DayCurve(pts));
+      }
+      for (var c = 0; c < curves.length; c++) {
+        curves[c] = made[c];
+      }
+      final name = j['profile'];
+      profileName = name is String && name.isNotEmpty ? name : 'Importado';
+      selectedPoint = 0;
+      notifyListeners();
+      return null;
+    } catch (_) {
+      return 'JSON inválido.';
+    }
+  }
 
   /// Copia a curva do canal escolhido para todos os outros.
   void copyCurveToAll() {
@@ -219,10 +353,12 @@ class Tc421Controller extends ChangeNotifier {
     for (var c = 0; c < curves.length; c++) {
       if (c != selectedChannel) curves[c] = src.copy();
     }
+    _clampPoint();
     notifyListeners();
   }
 
   void applyPreset(SchedulePreset preset) {
+    profileName = 'Personalizado';
     for (var c = 0; c < curves.length; c++) {
       curves[c] = switch (preset) {
         SchedulePreset.allOn => DayCurve.flat(100),
@@ -230,6 +366,7 @@ class Tc421Controller extends ChangeNotifier {
         SchedulePreset.daylight => DayCurve.daylight(),
       };
     }
+    _clampPoint();
     notifyListeners();
   }
 

@@ -1,172 +1,307 @@
 import 'package:flutter/material.dart';
 
+import 'aqua.dart';
 import 'controller.dart';
-import 'curve.dart' show timeLabel;
+import 'curve.dart';
 import 'curve_editor.dart';
 import 'manual_page.dart' show channelColors, channelNames;
 
-class SchedulePage extends StatelessWidget {
+/// Aba "Programação": editor de fotoperíodo.
+class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key, required this.controller});
 
   final Tc421Controller controller;
 
   @override
-  Widget build(BuildContext context) {
-    final uploading = controller.uploadProgress != null;
-    final message = controller.uploadMessage;
-    final textStyle = Theme.of(context).textTheme.bodySmall;
+  State<SchedulePage> createState() => _SchedulePageState();
+}
 
-    return Column(
+class _SchedulePageState extends State<SchedulePage> {
+  // Enquanto o dedo está no gráfico, a página não rola (senão o arrasto
+  // do ponto briga com a rolagem).
+  bool _touchingChart = false;
+
+  Tc421Controller get c => widget.controller;
+
+  void _toast(String text) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uploading = c.uploadProgress != null;
+    final message = c.uploadMessage;
+    final ch = c.selectedChannel;
+    final color = channelColors[ch];
+    final point = c.currentCurve.points[c.selectedPoint];
+    final endpoint = !c.canRemoveSelected;
+    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Aqua.muted,
+        );
+
+    return ListView(
+      physics: _touchingChart ? const NeverScrollableScrollPhysics() : null,
+      padding: const EdgeInsets.all(12),
       children: [
-        // Escolha do canal que está sendo editado.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+        AquaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var c = 0; c < channelColors.length; c++)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    avatar: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: channelColors[c],
+              Row(
+                children: [
+                  const Expanded(child: SectionTitle('Editor de fotoperíodo')),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: color),
                     ),
-                    label: Text(controller.selectedChannel == c
-                        ? '${c + 1} · ${channelNames[c]}'
-                        : '${c + 1}'),
-                    selected: controller.selectedChannel == c,
-                    onSelected: (_) => controller.selectChannel(c),
+                    child: Text(channelNames[ch],
+                        style: TextStyle(color: color, fontSize: 12)),
+                  ),
+                ],
+              ),
+              Text(
+                'Arraste os pontos: para os lados muda o horário, para cima e para baixo a intensidade. Os horários andam de 30 em 30 minutos.',
+                style: muted,
+              ),
+              const SizedBox(height: 10),
+
+              // Escolha do canal
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < channelColors.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          avatar: CircleAvatar(
+                            radius: 6,
+                            backgroundColor: channelColors[i],
+                          ),
+                          label: Text('CH${i + 1} · ${channelNames[i]}'),
+                          selected: ch == i,
+                          onSelected: (_) => c.selectChannel(i),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Gráfico
+              Container(
+                height: 300,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF031426),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Aqua.line),
+                ),
+                child: Listener(
+                  onPointerDown: (_) => setState(() => _touchingChart = true),
+                  onPointerUp: (_) => setState(() => _touchingChart = false),
+                  onPointerCancel: (_) =>
+                      setState(() => _touchingChart = false),
+                  child: CurveEditor(
+                    curves: c.curves,
+                    colors: channelColors,
+                    selected: ch,
+                    selectedPoint: c.selectedPoint,
+                    onPointSelected: c.selectPoint,
+                    onChanged: c.curvesChanged,
+                    playhead: c.simulating ? c.simMinute : null,
+                    enabled: !c.simulating,
                   ),
                 ),
+              ),
+              const SizedBox(height: 10),
+
+              // Lista de pontos
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (var i = 0; i < c.pointCount; i++)
+                    ChoiceChip(
+                      label: Text(
+                          'P${i + 1} · ${timeLabel(c.currentCurve.points[i].minute)} · ${c.currentCurve.points[i].value}%'),
+                      selected: c.selectedPoint == i,
+                      onSelected: (_) => c.selectPoint(i),
+                    ),
+                ],
+              ),
             ],
           ),
-          ),
         ),
 
-        // O gráfico ocupa o espaço que sobra.
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-            child: CurveEditor(
-              curves: controller.curves,
-              colors: channelColors,
-              selected: controller.selectedChannel,
-              onChanged: controller.curvesChanged,
-              playhead: controller.simulating ? controller.simMinute : null,
-              enabled: !controller.simulating,
-            ),
-          ),
-        ),
-
-        // Simulação do dia inteiro na luminária.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Row(
+        // Horário e intensidade do ponto escolhido
+        AquaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: FilledButton.tonalIcon(
-                  icon: Icon(
-                      controller.simulating ? Icons.stop : Icons.play_arrow),
-                  label: Text(controller.simulating
-                      ? 'Parar ${timeLabel(controller.simMinute)}'
-                      : 'Simular o dia'),
-                  onPressed: !controller.connected
-                      ? null
-                      : (controller.simulating
-                          ? controller.stopSimulation
-                          : controller.startSimulation),
+              Text('Horário do ponto (intervalos de 30 min)', style: muted),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Aqua.field,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF1C5A88)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    isExpanded: true,
+                    dropdownColor: Aqua.panel,
+                    value: point.minute,
+                    items: [
+                      for (var m = 0; m <= dayMinutes; m += minuteStep)
+                        DropdownMenuItem(value: m, child: Text(timeLabel(m))),
+                    ],
+                    // 00:00 e 24:00 não mudam de horário.
+                    onChanged: endpoint || c.simulating
+                        ? null
+                        : (m) {
+                            if (m != null) c.setSelectedPointMinute(m);
+                          },
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              SegmentedButton<int>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: 15, label: Text('15s')),
-                  ButtonSegment(value: 30, label: Text('30s')),
-                  ButtonSegment(value: 60, label: Text('60s')),
-                ],
-                selected: {controller.simSeconds},
-                onSelectionChanged: controller.simulating
+              const SizedBox(height: 14),
+              Text('Intensidade: ${point.value}%', style: muted),
+              Slider(
+                value: point.value.toDouble(),
+                min: 0,
+                max: 100,
+                divisions: 100,
+                activeColor: color,
+                onChanged: c.simulating
                     ? null
-                    : (s) => controller.setSimSeconds(s.first),
+                    : (v) => c.setSelectedPointValue(v.round()),
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Adicionar ponto'),
+                    onPressed: c.simulating
+                        ? null
+                        : () {
+                            if (!c.addPointNearSelected()) {
+                              _toast('Não há horário livre perto deste ponto.');
+                            }
+                          },
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.remove, size: 18),
+                    label: const Text('Remover ponto'),
+                    onPressed: c.simulating || !c.canRemoveSelected
+                        ? null
+                        : c.removeSelectedPoint,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Toque num espaço vazio do gráfico para criar um ponto e segure um ponto para apagar. Os pontos de 00:00 e 24:00 não saem.',
+                style: muted,
               ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-          child: Text(
-            'Percorre as 24 h na luminária e depois volta ao cronograma salvo (experimental).',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
 
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Text(
-            'Arraste um ponto: para os lados muda o horário, para cima e para baixo muda a intensidade. '
-            'Toque num espaço vazio para criar um ponto; segure um ponto para apagar.',
-            style: textStyle,
-          ),
-        ),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Wrap(
+        // Atalhos
+        AquaPanel(
+          child: Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
               ActionChip(
                 label: const Text('Dia (07h–21h)'),
-                onPressed: () =>
-                    controller.applyPreset(SchedulePreset.daylight),
+                onPressed: () => c.applyPreset(SchedulePreset.daylight),
               ),
               ActionChip(
                 label: const Text('Tudo ligado'),
-                onPressed: () => controller.applyPreset(SchedulePreset.allOn),
+                onPressed: () => c.applyPreset(SchedulePreset.allOn),
               ),
               ActionChip(
                 label: const Text('Tudo desligado'),
-                onPressed: () =>
-                    controller.applyPreset(SchedulePreset.allOff),
+                onPressed: () => c.applyPreset(SchedulePreset.allOff),
               ),
               ActionChip(
                 label: const Text('Copiar para todos os canais'),
-                onPressed: controller.copyCurveToAll,
+                onPressed: c.copyCurveToAll,
               ),
             ],
           ),
-          ),
         ),
 
-        if (uploading)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: LinearProgressIndicator(value: controller.uploadProgress),
-          ),
-        if (message != null && !uploading)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text(message),
-          ),
-
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.upload),
-                label: const Text('Enviar para a controladora'),
-                onPressed: controller.connected && !uploading
-                    ? controller.uploadSchedule
-                    : null,
+        // Simulação e envio
+        AquaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      icon: Icon(c.simulating ? Icons.stop : Icons.play_arrow),
+                      label: Text(c.simulating
+                          ? 'Parar ${timeLabel(c.simMinute)}'
+                          : 'Simular o dia'),
+                      onPressed: !c.connected
+                          ? null
+                          : (c.simulating
+                              ? c.stopSimulation
+                              : c.startSimulation),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: 15, label: Text('15s')),
+                      ButtonSegment(value: 30, label: Text('30s')),
+                      ButtonSegment(value: 60, label: Text('60s')),
+                    ],
+                    selected: {c.simSeconds},
+                    onSelectionChanged: c.simulating
+                        ? null
+                        : (s) => c.setSimSeconds(s.first),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(height: 6),
+              Text(
+                'Percorre as 24 h na luminária e depois volta ao cronograma salvo (experimental).',
+                style: muted,
+              ),
+              const SizedBox(height: 12),
+              if (uploading)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(value: c.uploadProgress),
+                ),
+              if (message != null && !uploading)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(message),
+                ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.upload),
+                  label: const Text('Enviar para a controladora'),
+                  onPressed:
+                      c.connected && !uploading ? c.uploadSchedule : null,
+                ),
+              ),
+            ],
           ),
         ),
       ],

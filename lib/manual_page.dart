@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'aqua.dart';
 import 'controller.dart';
 
 /// Canais do aquário marinho (não há canal vermelho).
@@ -19,6 +20,7 @@ const List<String> channelNames = [
   'Violeta',
 ];
 
+/// Aba "Canais": controle ao vivo, um slider por canal.
 class ManualPage extends StatelessWidget {
   const ManualPage({super.key, required this.controller});
 
@@ -28,22 +30,64 @@ class ManualPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = controller.connected;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       children: [
-        SwitchListTile(
-          title: const Text('Controle ao vivo'),
-          subtitle: const Text(
-              'Experimental: os sliders mudam a luz na hora. Ao desligar, a controladora volta ao cronograma.'),
-          value: controller.liveActive,
-          onChanged: enabled ? controller.setLiveActive : null,
-        ),
-        const SizedBox(height: 8),
-        for (var i = 0; i < controller.live.length; i++)
-          Row(
+        AquaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 84, child: Text(channelNames[i])),
-              Expanded(
-                child: Slider(
+              const SectionTitle('Controle dos canais'),
+              const Text(
+                'Ajuste cada canal na hora. É experimental: ao desligar, a controladora volta ao cronograma.',
+                style: TextStyle(color: Aqua.muted),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Controle ao vivo'),
+                value: controller.liveActive,
+                onChanged: enabled ? controller.setLiveActive : null,
+              ),
+            ],
+          ),
+        ),
+        for (var i = 0; i < controller.live.length; i++)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            decoration: BoxDecoration(
+              color: Aqua.field,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Aqua.line),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 13,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: channelColors[i],
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: channelColors[i], blurRadius: 8),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text('CH${i + 1} · ${channelNames[i]}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, color: Aqua.text)),
+                    ),
+                    Text('${controller.live[i]}%',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: channelColors[i])),
+                  ],
+                ),
+                Slider(
                   value: controller.live[i].toDouble(),
                   min: 0,
                   max: 100,
@@ -53,15 +97,10 @@ class ManualPage extends StatelessWidget {
                       ? (v) => controller.setLive(i, v.round())
                       : null,
                 ),
-              ),
-              SizedBox(
-                width: 48,
-                child: Text('${controller.live[i]}%',
-                    textAlign: TextAlign.end),
-              ),
-            ],
+              ],
+            ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
         Row(
           children: [
             Expanded(

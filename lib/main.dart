@@ -1,39 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'aqua.dart';
 import 'controller.dart';
+import 'home_page.dart';
 import 'manual_page.dart';
+import 'profiles_page.dart';
 import 'schedule_page.dart';
 
 void main() => runApp(const Tc421App());
-
-/// Visual de aquário marinho: fundo azul-profundo, destaques em azul escuro.
-final ThemeData _marineTheme = () {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF1D4ED8),
-    brightness: Brightness.dark,
-  ).copyWith(
-    primary: const Color(0xFF1D4ED8),
-    onPrimary: Colors.white,
-    surface: const Color(0xFF031019),
-    surfaceContainer: const Color(0xFF0A2233),
-    surfaceContainerHighest: const Color(0xFF0F2E45),
-    outlineVariant: const Color(0xFF17405A),
-    onSurfaceVariant: const Color(0xFF8FB0C8),
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
-    scaffoldBackgroundColor: const Color(0xFF031019),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFF041526),
-      surfaceTintColor: Colors.transparent,
-    ),
-    navigationBarTheme: const NavigationBarThemeData(
-      backgroundColor: Color(0xFF031019),
-      indicatorColor: Color(0xFF12264F),
-    ),
-  );
-}();
 
 class Tc421App extends StatelessWidget {
   const Tc421App({super.key});
@@ -41,10 +15,10 @@ class Tc421App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'TC421',
+      title: 'Aqua Light TC421',
       debugShowCheckedModeBanner: false,
-      theme: _marineTheme,
-      darkTheme: _marineTheme,
+      theme: aquaTheme,
+      darkTheme: aquaTheme,
       themeMode: ThemeMode.dark,
       home: const HomeShell(),
     );
@@ -74,31 +48,43 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  void _go(int index) => setState(() => tab = index);
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
+        final pages = <Widget>[
+          HomePage(controller: controller, onGo: _go),
+          ManualPage(controller: controller),
+          SchedulePage(controller: controller),
+          ProfilesPage(controller: controller),
+        ];
         return Scaffold(
-          appBar: AppBar(title: const Text('Controladora TC421')),
-          body: Column(
-            children: [
-              _ConnectionCard(controller: controller),
-              Expanded(
-                child: tab == 0
-                    ? ManualPage(controller: controller)
-                    : SchedulePage(controller: controller),
+          backgroundColor: Aqua.bg,
+          body: AquaBackground(
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _Header(controller: controller),
+                  Expanded(child: pages[tab]),
+                ],
               ),
-            ],
+            ),
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: tab,
-            onDestinationSelected: (i) => setState(() => tab = i),
+            onDestinationSelected: _go,
             destinations: const [
               NavigationDestination(
-                  icon: Icon(Icons.tune), label: 'Controle'),
+                  icon: Icon(Icons.home_outlined), label: 'Início'),
+              NavigationDestination(icon: Icon(Icons.tune), label: 'Canais'),
               NavigationDestination(
-                  icon: Icon(Icons.schedule), label: 'Cronograma'),
+                  icon: Icon(Icons.schedule), label: 'Programação'),
+              NavigationDestination(
+                  icon: Icon(Icons.star_border), label: 'Perfis'),
             ],
           ),
         );
@@ -107,91 +93,71 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class _ConnectionCard extends StatelessWidget {
-  const _ConnectionCard({required this.controller});
+class _Header extends StatelessWidget {
+  const _Header({required this.controller});
 
   final Tc421Controller controller;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      color: controller.connected
-          ? scheme.primaryContainer
-          : scheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(controller.connected ? Icons.wifi : Icons.wifi_off),
-            const SizedBox(width: 12),
-            Expanded(child: Text(controller.status)),
-            if (controller.searching)
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else ...[
-              if (controller.connected)
-                IconButton(
-                  tooltip: 'Sincronizar hora',
-                  icon: const Icon(Icons.access_time),
-                  onPressed: controller.syncTime,
-                ),
-              IconButton(
-                tooltip: 'IP da controladora',
-                icon: const Icon(Icons.settings_ethernet),
-                onPressed: () => _askIp(context),
-              ),
-              IconButton(
-                tooltip: 'Procurar novamente',
-                icon: const Icon(Icons.refresh),
-                onPressed: controller.connect,
-              ),
-            ],
-          ],
-        ),
+    final text = controller.connected
+        ? '● CONECTADA'
+        : controller.searching
+            ? '● PROCURANDO'
+            : '● SEM CONEXÃO';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: const BoxDecoration(
+        color: Color(0xEF031226),
+        border: Border(bottom: BorderSide(color: Aqua.line)),
       ),
-    );
-  }
-
-  Future<void> _askIp(BuildContext context) async {
-    final field = TextEditingController(text: controller.manualIp ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('IP da controladora'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                'Veja o IP no painel do seu roteador (lista de aparelhos conectados). Deixe vazio para procurar por broadcast.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: field,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                hintText: '192.168.0.50',
-                border: OutlineInputBorder(),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  const TextSpan(
+                    text: 'AQUA ',
+                    children: [
+                      TextSpan(
+                          text: 'LIGHT', style: TextStyle(color: Aqua.cyan)),
+                    ],
+                  ),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                    color: Aqua.text,
+                  ),
+                ),
+                const Text(
+                  'TC421 · MARINE LIGHTING CONTROL',
+                  style: TextStyle(
+                      fontSize: 10, letterSpacing: 2, color: Aqua.muted),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: const Color(0xFF1B628E)),
+            ),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                color: controller.connected
+                    ? const Color(0xFF8FEEFF)
+                    : Aqua.muted,
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, field.text),
-            child: const Text('Conectar'),
           ),
         ],
       ),
     );
-    if (result != null) await controller.setManualIp(result);
   }
 }

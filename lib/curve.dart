@@ -96,3 +96,31 @@ class DayCurve {
     if (lo <= hi) p.minute = _clampInt(snapMinute(minute), lo, hi);
   }
 }
+
+/// Perfis prontos: intensidade máxima de cada canal
+/// (Royal Blue, Blue, Ciano, Branco, Violeta).
+const Map<String, List<int>> profilePeaks = {
+  'Recife Natural': [80, 70, 48, 30, 40],
+  'Predominância Azul': [90, 85, 45, 10, 40],
+  'SPS Dominante': [85, 75, 65, 55, 45],
+  'LPS Dominante': [60, 55, 45, 50, 30],
+  'Apenas Azuis': [80, 70, 0, 0, 35],
+};
+
+/// Sobe de 07:00 a 12:00, fica no máximo até 18:00 e apaga às 21:00.
+List<DayCurve>? profileCurves(String name) {
+  final peaks = profilePeaks[name];
+  if (peaks == null) return null;
+  return [
+    for (final peak in peaks)
+      DayCurve([
+        CurvePoint(0, 0),
+        CurvePoint(420, 0),
+        CurvePoint(540, (peak * 0.55).round()),
+        CurvePoint(720, peak),
+        CurvePoint(1080, peak),
+        CurvePoint(1260, 0),
+        CurvePoint(dayMinutes, 0),
+      ]),
+  ];
+}

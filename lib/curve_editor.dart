@@ -40,6 +40,8 @@ class CurveEditor extends StatefulWidget {
     required this.onChanged,
     this.playhead,
     this.enabled = true,
+    this.selectedPoint,
+    this.onPointSelected,
   });
 
   final List<DayCurve> curves;
@@ -52,6 +54,10 @@ class CurveEditor extends StatefulWidget {
 
   /// false trava a edição (durante a simulação).
   final bool enabled;
+
+  /// Ponto destacado (do canal escolhido) e aviso de que o usuário tocou noutro.
+  final int? selectedPoint;
+  final ValueChanged<int>? onPointSelected;
 
   @override
   State<CurveEditor> createState() => _CurveEditorState();
@@ -91,6 +97,8 @@ class _CurveEditorState extends State<CurveEditor> {
           behavior: HitTestBehavior.opaque,
           onPanStart: (d) {
             setState(() => _drag = _hit(d.localPosition, size));
+            final hit = _drag;
+            if (hit != null) widget.onPointSelected?.call(hit);
           },
           onPanUpdate: (d) {
             final i = _drag;
@@ -110,7 +118,10 @@ class _CurveEditorState extends State<CurveEditor> {
               return;
             }
             final i = _curve.addPoint(g.minuteAt(p.dx), g.valueAt(p.dy));
-            if (i >= 0) widget.onChanged();
+            if (i >= 0) {
+              widget.onChanged();
+              widget.onPointSelected?.call(i);
+            }
           },
           onLongPressStart: (d) {
             final i = _hit(d.localPosition, size);
@@ -125,6 +136,7 @@ class _CurveEditorState extends State<CurveEditor> {
               colors: widget.colors,
               selected: widget.selected,
               dragIndex: _drag,
+              selectedPoint: widget.selectedPoint,
               gridColor: scheme.outlineVariant,
               textColor: scheme.onSurfaceVariant,
               tooltipColor: scheme.inverseSurface,
@@ -145,6 +157,7 @@ class _CurvePainter extends CustomPainter {
     required this.colors,
     required this.selected,
     required this.dragIndex,
+    this.selectedPoint,
     required this.gridColor,
     required this.textColor,
     required this.tooltipColor,
@@ -156,6 +169,7 @@ class _CurvePainter extends CustomPainter {
   final List<Color> colors;
   final int selected;
   final int? dragIndex;
+  final int? selectedPoint;
   final Color gridColor;
   final Color textColor;
   final Color tooltipColor;
@@ -243,7 +257,7 @@ class _CurvePainter extends CustomPainter {
     for (var i = 0; i < curve.points.length; i++) {
       final p = curve.points[i];
       final o = g.toPixel(p.minute, p.value);
-      final active = dragIndex == i;
+      final active = dragIndex == i || selectedPoint == i;
       canvas.drawCircle(o, active ? 15 : 11, Paint()..color = color);
       canvas.drawCircle(
         o,
