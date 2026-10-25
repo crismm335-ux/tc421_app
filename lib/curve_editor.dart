@@ -109,10 +109,18 @@ class _CurveEditorState extends State<CurveEditor> {
               g.minuteAt(d.localPosition.dx),
               g.valueAt(d.localPosition.dy),
             );
+            // Durante o arrasto só o gráfico é redesenhado; o resto da
+            // tela (lista de pontos, sliders) atualiza ao soltar.
+            setState(() {});
+          },
+          onPanEnd: (_) {
+            setState(() => _drag = null);
             widget.onChanged();
           },
-          onPanEnd: (_) => setState(() => _drag = null),
-          onPanCancel: () => setState(() => _drag = null),
+          onPanCancel: () {
+            setState(() => _drag = null);
+            widget.onChanged();
+          },
           onTapUp: (d) {
             final p = d.localPosition;
             if (_hit(p, size) != null || !g.plot.inflate(8).contains(p)) {
@@ -184,15 +192,23 @@ class _CurvePainter extends CustomPainter {
   final Color tooltipTextColor;
   final int? playhead;
 
+  static final Map<String, TextPainter> _labelCache = {};
+
+  /// Textos se repetem a cada quadro; guardar o layout evita refazê-lo.
   TextPainter _label(String text, double fontSize, Color color) {
-    return TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-            color: color, fontSize: fontSize, fontWeight: FontWeight.w500),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final key = '$text|$fontSize|${color.value}';
+    if (_labelCache.length > 400) _labelCache.clear();
+    return _labelCache.putIfAbsent(
+      key,
+      () => TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+              color: color, fontSize: fontSize, fontWeight: FontWeight.w500),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(),
+    );
   }
 
   Path _linePath(ChartGeometry g, DayCurve curve) {
