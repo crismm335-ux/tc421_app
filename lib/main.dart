@@ -62,7 +62,7 @@ class _HomeShellState extends State<HomeShell> {
       builder: (context, _) {
         // Só a aba aberta é montada.
         final Widget page = switch (tab) {
-          0 => HomePage(controller: controller, onGo: _go),
+          0 => HomePage(controller: controller, aquarium: aquarium, onGo: _go),
           1 => ManualPage(controller: controller),
           2 => SchedulePage(controller: controller),
           4 => EquipmentPage(aquarium: aquarium),

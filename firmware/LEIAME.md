@@ -1,15 +1,16 @@
 # Controladora de aquário (ESP32)
 
-Programa para o ESP32 que controla 9 tomadas, temperatura, pH, salinidade e a reposição de água (ATO). O app Aqua Light conversa com ele pela rede Wi-Fi.
+Programa para o ESP32 que controla 10 tomadas, temperatura, pH, salinidade e a reposição de água (ATO). O app Aqua Light conversa com ele pela rede Wi-Fi.
 
 ## Lista de peças
 
 - ESP32 (placa de desenvolvimento, "ESP32 DevKit" de 30 ou 38 pinos)
-- Módulo de relés de 8 canais **e** mais 1 relé (ou um módulo de 16 canais), com optoacoplador, para as 9 tomadas
+- Módulo de relés de 8 canais **e** mais 2 relés (ou um módulo de 16 canais), com optoacoplador, para as 10 tomadas
+- Para a TPA: uma bomba que retira água do sump (bomba de esgoto) e outra que repõe a água pronta do reservatório
 - Sensor de temperatura DS18B20 à prova d'água + resistor de 4,7 kΩ
 - ADS1115 (conversor analógico, I2C) para pH e salinidade
 - Sonda de pH com placa de interface (por exemplo DFRobot Gravity pH) e sonda de condutividade/salinidade com placa de interface (por exemplo DFRobot Gravity EC). Compre as duas do tipo analógico, com saída de 0 a 3,3 V.
-- Duas boias de nível (contato seco): uma no sump e uma no galão de reposição
+- Três boias de nível (contato seco): uma no sump (nível baixo, para a reposição), uma no galão de reposição e uma de **nível mínimo do sump** (para a TPA)
 - Fonte USB de 5 V para o ESP32
 - Caixa de acrílico, régua de tomadas com aterramento, fusível ou mini-disjuntor, borne/terminal para os sensores
 
@@ -17,13 +18,14 @@ Programa para o ESP32 que controla 9 tomadas, temperatura, pH, salinidade e a re
 
 | Função | Pino do ESP32 |
 |---|---|
-| Relés 1 a 9 (na ordem abaixo) | 16, 17, 18, 19, 23, 25, 26, 32, 33 |
+| Relés 1 a 10 (na ordem abaixo) | 16, 17, 18, 19, 23, 25, 26, 32, 33, 13 |
 | Sensor DS18B20 (dado) | 4 (com 4,7 kΩ entre dado e 3,3 V) |
 | ADS1115 SDA / SCL | 21 / 22 |
 | Boia do sump | 27 e GND |
 | Boia do galão | 14 e GND |
+| Boia de nível mínimo do sump | 15 e GND |
 
-Ordem das tomadas: 1 Bomba de circulação, 2 Skimmer, 3 Reposição (ATO), 4 Recalque, 5 Aquecedor, 6 Resfriamento, 7 Luminária, 8 Bomba da TPA, 9 Dosadora.
+Ordem das tomadas: 1 Bomba de circulação, 2 Skimmer, 3 Reposição (ATO), 4 Recalque, 5 Aquecedor, 6 Resfriamento, 7 Luminária, 8 TPA: retirar água do sump, 9 TPA: repor água pronta, 10 Dosadora.
 
 ADS1115: canal A0 recebe a saída do pH, canal A1 recebe a saída da salinidade. Alimente o ADS1115 e as placas das sondas com 3,3 V do ESP32.
 
@@ -42,6 +44,23 @@ Boias: o programa considera "nível baixo no sump" quando a boia do sump fecha c
 - Mantenha um termostato próprio no aquecedor. O app e o ESP32 são uma segunda proteção, não a única.
 - A dosadora liga por tempo. Teste a dose com um copo de medida antes de usá-la no aquário.
 - A reposição desliga sozinha após 120 segundos de funcionamento e trava, avisando no app. Isso evita encher o sump se a boia falhar.
+
+## Troca parcial de água (TPA)
+
+No app, a aba Aquário tem o painel **Troca parcial de água**: você informa quantos litros trocar e toca em **Iniciar TPA**. O ESP32 faz tudo sozinho:
+
+1. Liga a bomba de esgoto e retira a quantidade pedida do sump.
+2. Espera 3 segundos.
+3. Liga a bomba da água pronta e repõe a mesma quantidade, a partir do reservatório que você preparou antes.
+
+Como funciona e o que ele protege:
+- A quantidade é medida por **tempo**, usando a vazão (litros por minuto) de cada bomba, que você informa no app. Meça a vazão real de cada bomba com um balde e um cronômetro, senão a quantidade sai errada.
+- Se a boia de **nível mínimo do sump** fechar durante a retirada, a retirada para e o app repõe só o que saiu. Instale essa boia acima da entrada da bomba de recalque, para ela nunca trabalhar a seco.
+- Durante a TPA, a reposição automática (ATO) fica bloqueada e o skimmer fica desligado. O aquecedor fica desligado enquanto o nível está baixo.
+- Cada etapa tem um limite de 30 minutos.
+- Dá para interromper a qualquer momento pelo app.
+- **Não há sensor no reservatório de água pronta.** Se ele tiver menos água do que a troca pede, a bomba roda a seco no final. Prepare água suficiente (com a mesma salinidade e temperatura do aquário) antes de iniciar e, se puder, coloque nele uma boia ligada à bomba por fora.
+- Regule o dreno com cuidado para não enviar a água retirada para um lugar onde ela possa transbordar.
 
 ## Gravar o programa
 

@@ -1,7 +1,7 @@
 /*
  * Controladora de aquário marinho - ESP32
  *
- * 9 tomadas (relés), temperatura (DS18B20), pH e salinidade (via ADS1115),
+ * 10 tomadas (relés), temperatura (DS18B20), pH e salinidade (via ADS1115),
  * reposição automática (ATO) com 2 boias, e uma API HTTP simples na rede local.
  * O app Aqua Light conversa com esta API.
  *
@@ -32,20 +32,21 @@ const char* TIMEZONE = "<-03>3";          // Brasília
 // =============================
 
 enum Mode : uint8_t { M_OFF = 0, M_ON = 1, M_SCHEDULE = 2, M_AUTO = 3, M_DOSE = 4 };
-enum OutletId { O_CIRC, O_SKIMMER, O_ATO, O_RECALQUE, O_HEATER, O_CHILLER, O_LIGHT, O_TPA, O_DOSER, NUM_OUTLETS };
+enum OutletId { O_CIRC, O_SKIMMER, O_ATO, O_RECALQUE, O_HEATER, O_CHILLER, O_LIGHT, O_TPA_DRAIN, O_TPA_FILL, O_DOSER, NUM_OUTLETS };
 
 const char* OUTLET_NAME[NUM_OUTLETS] = {
   "Bomba de circulação", "Skimmer", "Reposição (ATO)", "Recalque", "Aquecedor",
-  "Resfriamento", "Luminária", "Bomba da TPA", "Dosadora"
+  "Resfriamento", "Luminária", "TPA: retirar água do sump", "TPA: repor água pronta", "Dosadora"
 };
 // GPIOs seguros do ESP32 (evitam os pinos de boot). 21/22 ficam para o I2C do ADS1115.
-const int OUTLET_PIN[NUM_OUTLETS] = {16, 17, 18, 19, 23, 25, 26, 32, 33};
+const int OUTLET_PIN[NUM_OUTLETS] = {16, 17, 18, 19, 23, 25, 26, 32, 33, 13};
 // Modo de partida de cada tomada (só vale na primeira vez; depois vale o que o app salvar).
-const Mode OUTLET_DEFAULT[NUM_OUTLETS] = {M_ON, M_ON, M_AUTO, M_ON, M_AUTO, M_AUTO, M_ON, M_OFF, M_OFF};
+const Mode OUTLET_DEFAULT[NUM_OUTLETS] = {M_ON, M_ON, M_AUTO, M_ON, M_AUTO, M_AUTO, M_ON, M_AUTO, M_AUTO, M_OFF};
 
 const int PIN_DS18B20 = 4;
 const int PIN_FLOAT_SUMP = 27;       // boia do sump: fechada ao GND = nível baixo (precisa repor)
 const int PIN_FLOAT_RESERVOIR = 14;  // boia do galão: fechada ao GND = galão vazio
+const int PIN_FLOAT_SUMP_MIN = 15;   // boia de nível MÍNIMO do sump: fechada ao GND = não retirar mais água
 const int PIN_SDA = 21, PIN_SCL = 22;
 
 struct OutletCfg { uint8_t mode; uint16_t onMin; uint16_t offMin; uint16_t doseSec; };
@@ -61,6 +62,14 @@ uint16_t atoCooldownSec = 600;
 bool atoFault = false;
 unsigned long atoStart = 0, atoLastStop = 0;
 bool atoRunning = false;
+// TPA (troca parcial de água): retira do sump e repõe água pronta
+enum TpaState : uint8_t { T_IDLE = 0, T_DRAIN = 1, T_PAUSE = 2, T_FILL = 3 };
+TpaState tpaState = T_IDLE;
+float tpaLiters = 10, tpaDrainLpm = 5, tpaFillLpm = 5;   // litros e vazão das bombas (L/min)
+unsigned long tpaStart = 0;
+float tpaDrainedL = 0, tpaDrainTotalSec = 0, tpaFillTotalSec = 0;
+String tpaMsg = "";
+const unsigned long TPA_MAX_SEC = 1800;                  // nenhuma etapa passa de 30 min
 // Calibrações
 float phV7 = 0, phV4 = 0; bool phCal = false;
 float ecK = 0; bool ecCal = false;
@@ -112,6 +121,9 @@ void loadConfig() {
   chillerOff = prefs.getFloat("coff", chillerOff);
   alarmLo = prefs.getFloat("alo", alarmLo);
   alarmHi = prefs.getFloat("ahi", alarmHi);
+  tpaLiters = prefs.getFloat("tpaL", tpaLiters);
+  tpaDrainLpm = prefs.getFloat("tpaD", tpaDrainLpm);
+  tpaFillLpm = prefs.getFloat("tpaF", tpaFillLpm);
   phCal = prefs.getBool("phcal", false);
   phV7 = prefs.getFloat("phv7", 0);
   phV4 = prefs.getFloat("phv4", 0);
@@ -161,11 +173,52 @@ void readSensors() {
 
 bool sumpLow() { return digitalRead(PIN_FLOAT_SUMP) == LOW; }
 bool reservoirEmpty() { return digitalRead(PIN_FLOAT_RESERVOIR) == LOW; }
+bool sumpMin() { return digitalRead(PIN_FLOAT_SUMP_MIN) == LOW; }
+bool tpaActive() { return tpaState != T_IDLE; }
+
+void tpaStop(const char* why) { tpaState = T_IDLE; tpaMsg = why; }
+
+bool tpaBegin() {
+  if (tpaActive()) return false;
+  if (sumpMin()) { tpaMsg = "O sump já está no nível mínimo"; return false; }
+  if (tpaLiters <= 0 || tpaDrainLpm <= 0 || tpaFillLpm <= 0) { tpaMsg = "Configure litros e vazões"; return false; }
+  tpaDrainTotalSec = min((float)TPA_MAX_SEC, tpaLiters / tpaDrainLpm * 60.0f);
+  tpaDrainedL = 0;
+  atoRunning = false;
+  tpaState = T_DRAIN; tpaStart = millis(); tpaMsg = "";
+  return true;
+}
+
+void tpaGoPause(float drainedL, const char* why) {
+  tpaDrainedL = drainedL; tpaState = T_PAUSE; tpaStart = millis();
+  if (why) tpaMsg = why;
+}
+
+void tpaTick() {
+  unsigned long el = (millis() - tpaStart) / 1000;
+  switch (tpaState) {
+    case T_DRAIN:
+      if (sumpMin()) tpaGoPause(el * tpaDrainLpm / 60.0f, "Nível mínimo do sump atingido: repondo só o que saiu");
+      else if (el >= tpaDrainTotalSec) tpaGoPause(el * tpaDrainLpm / 60.0f, nullptr);
+      break;
+    case T_PAUSE:
+      if (el >= 3) {
+        tpaFillTotalSec = min((float)TPA_MAX_SEC, tpaDrainedL / tpaFillLpm * 60.0f);
+        if (tpaFillTotalSec < 1) tpaStop("Nada foi retirado");
+        else { tpaState = T_FILL; tpaStart = millis(); }
+      }
+      break;
+    case T_FILL:
+      if (el >= tpaFillTotalSec) tpaStop("TPA concluída");
+      break;
+    default: break;
+  }
+}
 
 // ---------- lógica das tomadas ----------
 bool atoWanted() {
   unsigned long now = millis();
-  if (atoFault) { atoRunning = false; return false; }
+  if (atoFault || tpaActive()) { atoRunning = false; return false; }
   if (atoRunning) {
     if (!sumpLow() || reservoirEmpty()) { atoRunning = false; atoLastStop = now; return false; }
     if (now - atoStart > (unsigned long)atoMaxSec * 1000UL) {
@@ -202,6 +255,7 @@ bool doseWanted(int i) {
 }
 
 void runLogic() {
+  tpaTick();
   // Termostato com histerese
   if (!isnan(temperature)) {
     if (temperature < heaterOn) heaterState = true;
@@ -212,6 +266,12 @@ void runLogic() {
 
   for (int i = 0; i < NUM_OUTLETS; i++) {
     bool want = false;
+    if (i == O_TPA_DRAIN || i == O_TPA_FILL) {
+      // Só a rotina da TPA liga estas duas bombas.
+      want = (i == O_TPA_DRAIN) ? (tpaState == T_DRAIN) : (tpaState == T_FILL);
+      if (want != outletOn[i]) writeRelay(i, want);
+      continue;
+    }
     switch (cfg[i].mode) {
       case M_ON: want = true; break;
       case M_OFF: want = false; break;
@@ -226,6 +286,8 @@ void runLogic() {
     }
     // Proteções que valem mesmo no modo manual:
     if (i == O_HEATER && (isnan(temperature) || temperature >= alarmHi)) want = false;
+    if (i == O_HEATER && (tpaState == T_DRAIN || tpaState == T_PAUSE)) want = false;  // sump baixo
+    if (i == O_SKIMMER && tpaActive()) want = false;
     if (i == O_ATO && (atoFault || reservoirEmpty())) want = false;
     if (i == O_ATO && cfg[i].mode != M_AUTO && want) {
       // ATO ligada à mão também respeita o tempo máximo
@@ -267,6 +329,10 @@ void sendStatus() {
   }
   j += "],\"ato\":{\"sumpLow\":" + String(sumpLow() ? "true" : "false") + ",\"reservoirEmpty\":" + String(reservoirEmpty() ? "true" : "false") +
        ",\"fault\":" + String(atoFault ? "true" : "false") + ",\"maxSec\":" + String(atoMaxSec) + "}";
+  j += ",\"tpa\":{\"state\":" + String((int)tpaState) + ",\"elapsed\":" + String(tpaActive() ? (millis() - tpaStart) / 1000 : 0) +
+       ",\"total\":" + String(tpaState == T_DRAIN ? tpaDrainTotalSec : (tpaState == T_FILL ? tpaFillTotalSec : 0), 0) +
+       ",\"liters\":" + jf(tpaLiters, 1) + ",\"drainLpm\":" + jf(tpaDrainLpm, 1) + ",\"fillLpm\":" + jf(tpaFillLpm, 1) +
+       ",\"minLevel\":" + String(sumpMin() ? "true" : "false") + ",\"msg\":\"" + tpaMsg + "\"}";
   j += ",\"thermo\":{\"heaterOn\":" + jf(heaterOn) + ",\"heaterOff\":" + jf(heaterOff) + ",\"chillerOn\":" + jf(chillerOn) +
        ",\"chillerOff\":" + jf(chillerOff) + ",\"alarmLo\":" + jf(alarmLo) + ",\"alarmHi\":" + jf(alarmHi) + "}";
   j += ",\"cal\":{\"ph\":" + String(phCal ? "true" : "false") + ",\"ec\":" + String(ecCal ? "true" : "false") + "}}";
@@ -319,6 +385,17 @@ void handleCal() {
   sendStatus();
 }
 
+void handleTpaStart() { if (!tpaBegin() && tpaMsg == "") tpaMsg = "TPA já em andamento"; runLogic(); sendStatus(); }
+void handleTpaStop() { if (tpaActive()) tpaStop("TPA interrompida"); runLogic(); sendStatus(); }
+void handleTpaConfig() {
+  if (!tpaActive()) {
+    if (server.hasArg("liters")) { tpaLiters = constrain(server.arg("liters").toFloat(), 0.5f, 200.0f); prefs.putFloat("tpaL", tpaLiters); }
+    if (server.hasArg("drainLpm")) { tpaDrainLpm = constrain(server.arg("drainLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaD", tpaDrainLpm); }
+    if (server.hasArg("fillLpm")) { tpaFillLpm = constrain(server.arg("fillLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaF", tpaFillLpm); }
+  }
+  sendStatus();
+}
+
 void handleAtoReset() { atoFault = false; atoLastStop = millis(); sendStatus(); }
 
 // ---------- setup / loop ----------
@@ -335,6 +412,7 @@ void setup() {
   for (int i = 0; i < NUM_OUTLETS; i++) { pinMode(OUTLET_PIN[i], OUTPUT); writeRelay(i, false); }
   pinMode(PIN_FLOAT_SUMP, INPUT_PULLUP);
   pinMode(PIN_FLOAT_RESERVOIR, INPUT_PULLUP);
+  pinMode(PIN_FLOAT_SUMP_MIN, INPUT_PULLUP);
   Serial.begin(115200);
   loadConfig();
 
@@ -356,6 +434,9 @@ void setup() {
   server.on("/api/thermo", handleThermo);
   server.on("/api/cal", handleCal);
   server.on("/api/atoreset", handleAtoReset);
+  server.on("/api/tpa/start", handleTpaStart);
+  server.on("/api/tpa/stop", handleTpaStop);
+  server.on("/api/tpa/config", handleTpaConfig);
   server.begin();
   Serial.print("Pronto. IP: ");
   Serial.println(WiFi.localIP());

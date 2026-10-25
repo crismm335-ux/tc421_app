@@ -84,13 +84,13 @@ class EquipmentPage extends StatelessWidget {
           // Sensores
           Row(
             children: [
-              _SensorCard('Temperatura', a.temp, '°C', 1,
+              SensorCard('Temperatura', a.temp, '°C', 1,
                   warn: a.temp == null),
               const SizedBox(width: 8),
-              _SensorCard('pH', a.ph, '', 2,
+              SensorCard('pH', a.ph, '', 2,
                   note: a.adsOk ? (a.phCal ? null : 'calibrar') : 'sem ADS'),
               const SizedBox(width: 8),
-              _SensorCard('Salinidade', a.salinity, 'ppt', 1,
+              SensorCard('Salinidade', a.salinity, 'ppt', 1,
                   note: a.adsOk ? (a.ecCal ? null : 'calibrar') : 'sem ADS'),
             ],
           ),
@@ -112,6 +112,8 @@ class EquipmentPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+
+          _TpaPanel(aquarium: a),
 
           // Tomadas
           AquaPanel(
@@ -301,8 +303,8 @@ class EquipmentPage extends StatelessWidget {
   }
 }
 
-class _SensorCard extends StatelessWidget {
-  const _SensorCard(this.label, this.value, this.unit, this.decimals,
+class SensorCard extends StatelessWidget {
+  const SensorCard(this.label, this.value, this.unit, this.decimals,
       {this.note, this.warn = false});
 
   final String label;
@@ -525,5 +527,161 @@ class _OutletSheetState extends State<_OutletSheet> {
         ),
       ),
     );
+  }
+}
+
+/// Troca parcial de água: retira do sump e repõe água pronta.
+class _TpaPanel extends StatelessWidget {
+  const _TpaPanel({required this.aquarium});
+
+  final AquariumController aquarium;
+
+  String get _phase => switch (aquarium.tpaState) {
+        1 => 'Retirando água do sump',
+        2 => 'Aguardando',
+        3 => 'Repondo água pronta',
+        _ => 'Parada',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final a = aquarium;
+    final running = a.tpaState != 0;
+    final progress = (running && a.tpaTotal > 0)
+        ? (a.tpaElapsed / a.tpaTotal).clamp(0.0, 1.0)
+        : (a.tpaState == 2 ? 1.0 : 0.0);
+    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(color: Aqua.muted);
+    return AquaPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle('Troca parcial de água (TPA)'),
+          Text(
+            'Retira ${a.tpaLiters.toStringAsFixed(1)} L do sump e repõe a mesma quantidade com a água pronta do reservatório.',
+            style: const TextStyle(color: Aqua.muted),
+          ),
+          const SizedBox(height: 12),
+          if (running) ...[
+            Text(_phase,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, color: Aqua.text)),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: progress),
+            const SizedBox(height: 12),
+          ] else if (a.tpaMsg.isNotEmpty) ...[
+            Text(a.tpaMsg, style: const TextStyle(color: Aqua.text)),
+            const SizedBox(height: 12),
+          ],
+          if (a.tpaMinLevel && !running)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('O sump está no nível mínimo: não dá para retirar água agora.',
+                  style: muted?.copyWith(color: const Color(0xFFFFB347))),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!running)
+                FilledButton.icon(
+                  icon: const Icon(Icons.water_drop_outlined, size: 18),
+                  label: const Text('Iniciar TPA'),
+                  onPressed: a.tpaMinLevel ? null : () => _confirm(context),
+                )
+              else
+                FilledButton.icon(
+                  icon: const Icon(Icons.stop, size: 18),
+                  label: const Text('Parar TPA'),
+                  onPressed: a.tpaStop,
+                ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.tune, size: 18),
+                label: const Text('Litros e vazões'),
+                onPressed: running ? null : () => _config(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Vazões: retirada ${a.tpaDrainLpm.toStringAsFixed(1)} L/min, reposição ${a.tpaFillLpm.toStringAsFixed(1)} L/min. Durante a TPA a reposição automática e o skimmer ficam desligados.',
+            style: muted,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirm(BuildContext context) async {
+    final a = aquarium;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Iniciar a troca de água?'),
+        content: Text(
+            'Vou retirar ${a.tpaLiters.toStringAsFixed(1)} L do sump e repor a mesma quantidade.\n\n'
+            'Confira antes: o reservatório tem água pronta suficiente, com a mesma salinidade e temperatura do aquário, e o destino da água retirada está livre.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Iniciar'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await a.tpaStart();
+  }
+
+  Future<void> _config(BuildContext context) async {
+    final a = aquarium;
+    final liters = TextEditingController(text: a.tpaLiters.toString());
+    final drain = TextEditingController(text: a.tpaDrainLpm.toString());
+    final fill = TextEditingController(text: a.tpaFillLpm.toString());
+    Widget field(String label, TextEditingController c) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: TextField(
+            controller: c,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+                labelText: label, border: const OutlineInputBorder()),
+          ),
+        );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Litros e vazões'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              field('Litros a trocar', liters),
+              field('Vazão da bomba de retirada (L/min)', drain),
+              field('Vazão da bomba de reposição (L/min)', fill),
+              const Text(
+                  'Meça a vazão real de cada bomba com um balde e um cronômetro. A quantidade é calculada pelo tempo.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    double? v(TextEditingController c) =>
+        double.tryParse(c.text.replaceAll(',', '.'));
+    final l = v(liters), d = v(drain), f = v(fill);
+    if (l == null || d == null || f == null) return;
+    await a.setTpaConfig(l, d, f);
   }
 }

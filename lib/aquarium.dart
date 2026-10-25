@@ -35,7 +35,10 @@ class OutletState {
       case 4: // aquecedor
       case 5: // resfriamento
         return [OutletMode.off, OutletMode.on, OutletMode.auto];
-      case 8: // dosadora
+      case 7: // TPA: retirar
+      case 8: // TPA: repor
+        return [OutletMode.auto]; // só a rotina da TPA liga estas bombas
+      case 9: // dosadora
         return [OutletMode.off, OutletMode.dose, OutletMode.on];
       default:
         return [OutletMode.off, OutletMode.on, OutletMode.schedule];
@@ -72,6 +75,14 @@ class AquariumController extends ChangeNotifier {
   List<OutletState> outlets = [];
   bool atoSumpLow = false, atoReservoirEmpty = false, atoFault = false;
   Map<String, double> thermo = {};
+
+  // TPA: 0 parada, 1 retirando, 2 pausa, 3 repondo
+  int tpaState = 0;
+  int tpaElapsed = 0;
+  int tpaTotal = 0;
+  double tpaLiters = 10, tpaDrainLpm = 5, tpaFillLpm = 5;
+  bool tpaMinLevel = false;
+  String tpaMsg = '';
 
   Future<void> start() async {
     final prefs = await SharedPreferences.getInstance();
@@ -151,6 +162,15 @@ class AquariumController extends ChangeNotifier {
         for (final e in (j['thermo'] as Map<String, dynamic>).entries)
           e.key: (e.value as num).toDouble()
       };
+      final tpa = j['tpa'] as Map<String, dynamic>;
+      tpaState = tpa['state'] as int;
+      tpaElapsed = (tpa['elapsed'] as num).toInt();
+      tpaTotal = (tpa['total'] as num).toInt();
+      tpaLiters = (tpa['liters'] as num).toDouble();
+      tpaDrainLpm = (tpa['drainLpm'] as num).toDouble();
+      tpaFillLpm = (tpa['fillLpm'] as num).toDouble();
+      tpaMinLevel = tpa['minLevel'] as bool;
+      tpaMsg = tpa['msg'] as String;
       final cal = j['cal'] as Map<String, dynamic>;
       phCal = cal['ph'] as bool;
       ecCal = cal['ec'] as bool;
@@ -190,6 +210,17 @@ class AquariumController extends ChangeNotifier {
       _send('/api/cal', {'type': 'ec', 'ref': '$reference'});
 
   Future<void> resetAto() => _send('/api/atoreset', {});
+
+  Future<void> tpaStart() => _send('/api/tpa/start', {});
+
+  Future<void> tpaStop() => _send('/api/tpa/stop', {});
+
+  Future<void> setTpaConfig(double liters, double drainLpm, double fillLpm) =>
+      _send('/api/tpa/config', {
+        'liters': '$liters',
+        'drainLpm': '$drainLpm',
+        'fillLpm': '$fillLpm',
+      });
 
   @override
   void dispose() {
