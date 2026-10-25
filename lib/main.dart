@@ -6,6 +6,35 @@ import 'schedule_page.dart';
 
 void main() => runApp(const Tc421App());
 
+/// Visual de aquário marinho: fundo azul-profundo, destaques em azul escuro.
+final ThemeData _marineTheme = () {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF1D4ED8),
+    brightness: Brightness.dark,
+  ).copyWith(
+    primary: const Color(0xFF1D4ED8),
+    onPrimary: Colors.white,
+    surface: const Color(0xFF031019),
+    surfaceContainer: const Color(0xFF0A2233),
+    surfaceContainerHighest: const Color(0xFF0F2E45),
+    outlineVariant: const Color(0xFF17405A),
+    onSurfaceVariant: const Color(0xFF8FB0C8),
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: const Color(0xFF031019),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xFF041526),
+      surfaceTintColor: Colors.transparent,
+    ),
+    navigationBarTheme: const NavigationBarThemeData(
+      backgroundColor: Color(0xFF031019),
+      indicatorColor: Color(0xFF12264F),
+    ),
+  );
+}();
+
 class Tc421App extends StatelessWidget {
   const Tc421App({super.key});
 
@@ -14,12 +43,9 @@ class Tc421App extends StatelessWidget {
     return MaterialApp(
       title: 'TC421',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-      darkTheme: ThemeData(
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: _marineTheme,
+      darkTheme: _marineTheme,
+      themeMode: ThemeMode.dark,
       home: const HomeShell(),
     );
   }

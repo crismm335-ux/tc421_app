@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 
 import 'controller.dart';
 
+/// Canais do aquário marinho (não há canal vermelho).
 const List<Color> channelColors = [
-  Colors.blue,
-  Colors.red,
-  Colors.green,
-  Colors.orange,
-  Colors.purple,
+  Color(0xFF6577FF), // Royal Blue
+  Color(0xFF38A9FF), // Blue
+  Color(0xFF22E3EE), // Ciano
+  Color(0xFFF4F8FF), // Branco
+  Color(0xFFB97CFF), // Violeta
+];
+
+const List<String> channelNames = [
+  'Royal Blue',
+  'Blue',
+  'Ciano',
+  'Branco',
+  'Violeta',
 ];
 
 class ManualPage extends StatelessWidget {
@@ -32,7 +41,7 @@ class ManualPage extends StatelessWidget {
         for (var i = 0; i < controller.live.length; i++)
           Row(
             children: [
-              SizedBox(width: 72, child: Text('Canal ${i + 1}')),
+              SizedBox(width: 84, child: Text(channelNames[i])),
               Expanded(
                 child: Slider(
                   value: controller.live[i].toDouble(),

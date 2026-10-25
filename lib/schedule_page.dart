@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'controller.dart';
 import 'curve.dart' show timeLabel;
 import 'curve_editor.dart';
-import 'manual_page.dart' show channelColors;
+import 'manual_page.dart' show channelColors, channelNames;
 
 class SchedulePage extends StatelessWidget {
   const SchedulePage({super.key, required this.controller});
@@ -21,10 +21,10 @@ class SchedulePage extends StatelessWidget {
         // Escolha do canal que está sendo editado.
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-          child: Row(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
             children: [
-              const Text('Canal'),
-              const SizedBox(width: 8),
               for (var c = 0; c < channelColors.length; c++)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
@@ -33,12 +33,15 @@ class SchedulePage extends StatelessWidget {
                       radius: 6,
                       backgroundColor: channelColors[c],
                     ),
-                    label: Text('${c + 1}'),
+                    label: Text(controller.selectedChannel == c
+                        ? '${c + 1} · ${channelNames[c]}'
+                        : '${c + 1}'),
                     selected: controller.selectedChannel == c,
                     onSelected: (_) => controller.selectChannel(c),
                   ),
                 ),
             ],
+          ),
           ),
         ),
 
