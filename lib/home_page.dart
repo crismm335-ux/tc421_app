@@ -37,7 +37,7 @@ class HomePage extends StatelessWidget {
       children: [
         // Cabeçalho
         SizedBox(
-          height: 126,
+          height: 108,
           child: Stack(
             children: [
               Positioned(
@@ -75,16 +75,8 @@ class HomePage extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: 2),
-                    Text('TC421',
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(color: Color(0xCC000814), blurRadius: 8)
-                            ])),
-                    SizedBox(height: 4),
-                    Text('ILUMINAÇÃO PARA AQUÁRIOS MARINHOS',
+                    SizedBox(height: 6),
+                    Text('CONTROLE E MONITORAMENTO DO AQUÁRIO',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 11,
