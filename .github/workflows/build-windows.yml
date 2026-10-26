@@ -41,10 +41,11 @@ jobs:
       - name: Empacotar
         shell: pwsh
         run: |
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath tc421-windows.zip
+          # -Force substitui um tc421-windows.zip que já exista no repositório.
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\tc421-windows.zip -Force
 
       - uses: actions/upload-artifact@v4
         with:
           name: tc421-windows
-          path: tc421-windows.zip
+          path: build/tc421-windows.zip
           retention-days: 30

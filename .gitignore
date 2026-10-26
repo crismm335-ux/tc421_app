@@ -8,3 +8,8 @@ android/
 ios/
 Payload/
 *.ipa
+
+# Arquivos gerados pelos builds
+*.zip
+*.ipa
+*.apk
