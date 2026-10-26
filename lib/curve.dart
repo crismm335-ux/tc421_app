@@ -102,9 +102,18 @@ class DayCurve {
 const Map<String, List<int>> profilePeaks = {
   'Recife Natural': [80, 70, 48, 30, 40],
   'Predominância Azul': [90, 85, 45, 10, 40],
-  'SPS Dominante': [85, 75, 65, 55, 45],
-  'LPS Dominante': [60, 55, 45, 50, 30],
-  'Apenas Azuis': [80, 70, 0, 0, 35],
+  'Cores Vibrantes': [85, 70, 55, 25, 70],
+  'Crescimento (LPS/SPS)': [85, 75, 65, 55, 45],
+  'Apenas Visual': [80, 70, 0, 0, 35],
+};
+
+/// Frase curta de cada perfil pronto.
+const Map<String, String> profileNotes = {
+  'Recife Natural': 'Equilíbrio perfeito',
+  'Predominância Azul': 'Ideal para corais SPS',
+  'Cores Vibrantes': 'Realça a coloração',
+  'Crescimento (LPS/SPS)': 'Alto PAR e espectro amplo',
+  'Apenas Visual': 'Tons azuis e violeta',
 };
 
 /// Sobe de 07:00 a 12:00, fica no máximo até 18:00 e apaga às 21:00.

@@ -8,9 +8,9 @@ class ChartGeometry {
 
   final Size size;
 
-  static const double left = 42;
-  static const double right = 16;
-  static const double top = 24;
+  static const double left = 44;
+  static const double right = 18;
+  static const double top = 22;
   static const double bottom = 30;
 
   Rect get plot => Rect.fromLTRB(
@@ -42,7 +42,11 @@ class CurveEditor extends StatefulWidget {
     this.enabled = true,
     this.selectedPoint,
     this.onPointSelected,
+    this.visible,
   });
+
+  /// Quais canais aparecem no gráfico (null = todos).
+  final List<bool>? visible;
 
   final List<DayCurve> curves;
   final List<Color> colors;
@@ -121,11 +125,15 @@ class _CurveEditorState extends State<CurveEditor> {
             setState(() => _drag = null);
             widget.onChanged();
           },
+          // Um toque: num ponto, escolhe ele; num espaço vazio, cria um ponto.
           onTapUp: (d) {
             final p = d.localPosition;
-            if (_hit(p, size) != null || !g.plot.inflate(8).contains(p)) {
+            final hit = _hit(p, size);
+            if (hit != null) {
+              widget.onPointSelected?.call(hit);
               return;
             }
+            if (!g.plot.inflate(8).contains(p)) return;
             final i = _curve.addPoint(g.minuteAt(p.dx), g.valueAt(p.dy));
             if (i >= 0) {
               widget.onChanged();
@@ -133,10 +141,13 @@ class _CurveEditorState extends State<CurveEditor> {
             }
           },
           onDoubleTapDown: (d) => _lastTap = d.localPosition,
+          // Dois toques num ponto: apaga (00:00 e 24:00 ficam).
           onDoubleTap: () {
             final i = _hit(_lastTap, size);
             if (i == null) return;
+            if (i == 0 || i == _curve.points.length - 1) return;
             _curve.removeAt(i);
+            widget.onPointSelected?.call(i - 1);
             widget.onChanged();
           },
           onLongPressStart: (d) {
@@ -158,6 +169,7 @@ class _CurveEditorState extends State<CurveEditor> {
               tooltipColor: scheme.inverseSurface,
               tooltipTextColor: scheme.onInverseSurface,
               playhead: widget.playhead,
+              visible: widget.visible,
             ),
           ),
           ),
@@ -179,8 +191,10 @@ class _CurvePainter extends CustomPainter {
     required this.tooltipColor,
     required this.tooltipTextColor,
     this.playhead,
+    this.visible,
   });
 
+  final List<bool>? visible;
   final List<DayCurve> curves;
   final List<Color> colors;
   final int selected;
@@ -236,61 +250,91 @@ class _CurvePainter extends CustomPainter {
       final y = g.toPixel(0, v).dy;
       canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
       final t = _label('$v%', 11, textColor);
-      t.paint(canvas, Offset(plot.left - t.width - 6, y - t.height / 2));
+      t.paint(canvas, Offset(plot.left - t.width - 8, y - t.height / 2));
     }
-    for (var h = 0; h <= 24; h += 3) {
+    for (var h = 0; h <= 24; h += 2) {
       final x = g.toPixel(h * 60, 0).dx;
-      canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), grid);
-      if (h % 6 == 0) {
-        final t = _label('${h.toString().padLeft(2, '0')}h', 11, textColor);
-        t.paint(canvas, Offset(x - t.width / 2, plot.bottom + 8));
+      canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom),
+          Paint()
+            ..color = gridColor.withAlpha(h % 4 == 0 ? 150 : 70)
+            ..strokeWidth = 1);
+      if (h % 4 == 0) {
+        final t = _label('${h.toString().padLeft(2, '0')}:00', 11, textColor);
+        var dx = x - t.width / 2;
+        if (dx + t.width > size.width) dx = size.width - t.width;
+        t.paint(canvas, Offset(dx, plot.bottom + 9));
       }
     }
 
-    // Os outros canais ficam apagados ao fundo.
-    for (var c = 0; c < curves.length; c++) {
-      if (c == selected) continue;
+    bool shown(int c) => visible == null || visible![c];
+
+    // Canais visíveis: linha com brilho e pontinhos. O escolhido fica por cima.
+    final order = [
+      for (var c = 0; c < curves.length; c++)
+        if (c != selected) c,
+      selected,
+    ];
+    for (final c in order) {
+      if (!shown(c)) continue;
+      final isSel = c == selected;
+      final curve = curves[c];
+      final color = colors[c];
+      final line = _linePath(g, curve);
+      if (isSel) {
+        final area = Path.from(line)
+          ..lineTo(plot.right, plot.bottom)
+          ..lineTo(plot.left, plot.bottom)
+          ..close();
+        canvas.drawPath(
+          area,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [color.withAlpha(60), color.withAlpha(0)],
+            ).createShader(plot),
+        );
+      }
       canvas.drawPath(
-        _linePath(g, curves[c]),
+        line,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
+          ..strokeWidth = isSel ? 7 : 5
           ..strokeJoin = StrokeJoin.round
-          ..color = colors[c].withAlpha(80),
+          ..color = color.withAlpha(isSel ? 110 : 60)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       );
-    }
-
-    // Canal escolhido: área, linha e pontos.
-    final curve = curves[selected];
-    final color = colors[selected];
-    final line = _linePath(g, curve);
-    final area = Path.from(line)
-      ..lineTo(plot.right, plot.bottom)
-      ..lineTo(plot.left, plot.bottom)
-      ..close();
-    canvas.drawPath(area, Paint()..color = color.withAlpha(36));
-    canvas.drawPath(
-      line,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.5
-        ..strokeJoin = StrokeJoin.round
-        ..color = color,
-    );
-
-    for (var i = 0; i < curve.points.length; i++) {
-      final p = curve.points[i];
-      final o = g.toPixel(p.minute, p.value);
-      final active = dragIndex == i || selectedPoint == i;
-      canvas.drawCircle(o, active ? 15 : 11, Paint()..color = color);
-      canvas.drawCircle(
-        o,
-        active ? 15 : 11,
+      canvas.drawPath(
+        line,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5
-          ..color = Colors.white,
+          ..strokeWidth = isSel ? 3 : 2
+          ..strokeJoin = StrokeJoin.round
+          ..color = color,
       );
+      for (var i = 0; i < curve.points.length; i++) {
+        final p = curve.points[i];
+        final o = g.toPixel(p.minute, p.value);
+        final active = isSel && (dragIndex == i || selectedPoint == i);
+        final r = active ? 10.0 : (isSel ? 7.0 : 4.5);
+        if (isSel) {
+          canvas.drawCircle(
+              o,
+              r + 4,
+              Paint()
+                ..color = color.withAlpha(120)
+                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+        }
+        canvas.drawCircle(o, r, Paint()..color = active ? Colors.white : color);
+        canvas.drawCircle(
+          o,
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = active ? color : Colors.white,
+        );
+      }
     }
 
     // Simulação: linha que anda, com a intensidade de cada canal naquele horário.
@@ -305,6 +349,7 @@ class _CurvePainter extends CustomPainter {
           ..strokeWidth = 2,
       );
       for (var c = 0; c < curves.length; c++) {
+        if (!shown(c)) continue;
         final o = g.toPixel(ph, curves[c].valueAt(ph));
         canvas.drawCircle(o, 6, Paint()..color = colors[c]);
         canvas.drawCircle(
@@ -331,6 +376,7 @@ class _CurvePainter extends CustomPainter {
     }
 
     // Etiqueta com horário e intensidade do ponto que está sendo arrastado.
+    final curve = curves[selected];
     final di = dragIndex;
     if (di != null && di < curve.points.length) {
       final p = curve.points[di];

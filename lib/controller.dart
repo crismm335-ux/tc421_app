@@ -22,6 +22,17 @@ class Tc421Controller extends ChangeNotifier {
 
   // Controle ao vivo
   final List<int> live = List.filled(Tc421Protocol.channelCount, 0);
+
+  /// Canal ligado ou desligado (chave de cada canal). Canal desligado
+  /// manda 0% ao vivo e no cronograma enviado.
+  final List<bool> channelOn = List.filled(Tc421Protocol.channelCount, true);
+
+  /// Níveis ao vivo já com os canais desligados zerados.
+  List<int> get liveOutput =>
+      List.generate(live.length, (i) => channelOn[i] ? live[i] : 0);
+
+  /// Perfis salvos pelo usuário (aba Meus Perfis).
+  final List<SavedProfile> myProfiles = [];
   bool liveActive = false;
   Timer? _liveTimer;
   bool _liveDirty = false;
@@ -44,7 +55,7 @@ class Tc421Controller extends ChangeNotifier {
         Tc421Protocol.pointCount,
         (i) => List.generate(
           Tc421Protocol.channelCount,
-          (c) => curves[c].valueAt(i * minuteStep),
+          (c) => channelOn[c] ? curves[c].valueAt(i * minuteStep) : 0,
         ),
       );
   double? uploadProgress;
@@ -56,6 +67,107 @@ class Tc421Controller extends ChangeNotifier {
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     manualIp = prefs.getString('controller_ip');
+    final on = prefs.getStringList('channel_on');
+    if (on != null && on.length == channelOn.length) {
+      for (var i = 0; i < on.length; i++) {
+        channelOn[i] = on[i] == '1';
+      }
+    }
+    myProfiles
+      ..clear()
+      ..addAll(_decodeProfiles(prefs.getString('my_profiles_v1')));
+    notifyListeners();
+  }
+
+  static List<SavedProfile> _decodeProfiles(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw);
+      if (list is! List) return [];
+      final out = <SavedProfile>[];
+      for (final item in list) {
+        if (item is! Map) continue;
+        final name = item['name'];
+        final data = item['data'];
+        if (name is! String || data is! List || data.length != 5) continue;
+        final made = <DayCurve>[];
+        for (final ch in data) {
+          if (ch is! List) break;
+          final pts = <CurvePoint>[];
+          for (final p in ch) {
+            if (p is! Map) continue;
+            final m = p['m'], v = p['v'];
+            if (m is! num || v is! num) continue;
+            pts.add(CurvePoint(snapMinute(m), v.round().clamp(0, 100).toInt()));
+          }
+          if (pts.length >= 2) made.add(DayCurve(pts));
+        }
+        if (made.length == 5) out.add(SavedProfile(name, made));
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveProfiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'my_profiles_v1',
+      jsonEncode([
+        for (final p in myProfiles)
+          {
+            'name': p.name,
+            'data': [
+              for (final c in p.curves)
+                [
+                  for (final pt in c.points) {'m': pt.minute, 'v': pt.value}
+                ]
+            ],
+          }
+      ]),
+    );
+  }
+
+  /// Guarda as curvas atuais com um nome (substitui se o nome já existe).
+  Future<void> saveCurrentProfile(String name) async {
+    final clean = name.trim().isEmpty ? 'Meu perfil' : name.trim();
+    final copy = [for (final c in curves) c.copy()];
+    final i = myProfiles
+        .indexWhere((p) => p.name.toLowerCase() == clean.toLowerCase());
+    if (i >= 0) {
+      myProfiles[i] = SavedProfile(clean, copy);
+    } else {
+      myProfiles.insert(0, SavedProfile(clean, copy));
+    }
+    profileName = clean;
+    notifyListeners();
+    await _saveProfiles();
+  }
+
+  void applySavedProfile(SavedProfile p) {
+    for (var c = 0; c < curves.length; c++) {
+      curves[c] = p.curves[c].copy();
+    }
+    profileName = p.name;
+    selectedPoint = 0;
+    notifyListeners();
+  }
+
+  Future<void> deleteSavedProfile(SavedProfile p) async {
+    myProfiles.remove(p);
+    notifyListeners();
+    await _saveProfiles();
+  }
+
+  /// Liga ou desliga um canal (vale para o ao vivo e para o cronograma).
+  Future<void> setChannelOn(int channel, bool on) async {
+    channelOn[channel] = on;
+    notifyListeners();
+    if (liveActive) _scheduleLiveSend();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        'channel_on', [for (final v in channelOn) v ? '1' : '0']);
   }
 
   Future<void> setManualIp(String? ip) async {
@@ -115,7 +227,7 @@ class Tc421Controller extends ChangeNotifier {
     liveActive = on;
     if (on) {
       _client.beginLive();
-      _client.sendLive(live);
+      _client.sendLive(liveOutput);
     } else {
       liveMode = null;
       _client.endLive();
@@ -129,13 +241,14 @@ class Tc421Controller extends ChangeNotifier {
   /// Média dos canais agora, segundo o cronograma (ou o ao vivo, se ativo).
   int get currentIntensity {
     if (liveActive) {
-      return (live.reduce((a, b) => a + b) / live.length).round();
+      final out = liveOutput;
+      return (out.reduce((a, b) => a + b) / out.length).round();
     }
     final now = DateTime.now();
     final minute = now.hour * 60 + now.minute;
     var sum = 0;
-    for (final c in curves) {
-      sum += c.valueAt(minute);
+    for (var c = 0; c < curves.length; c++) {
+      if (channelOn[c]) sum += curves[c].valueAt(minute);
     }
     return (sum / curves.length).round();
   }
@@ -151,7 +264,7 @@ class Tc421Controller extends ChangeNotifier {
       liveActive = true;
       _client.beginLive();
     }
-    _client.sendLive(live);
+    _client.sendLive(liveOutput);
     notifyListeners();
   }
 
@@ -163,13 +276,35 @@ class Tc421Controller extends ChangeNotifier {
 
   void setLive(int channel, int value) {
     live[channel] = value;
+    // Mexer num canal com a luminária conectada liga o controle ao vivo.
+    if (!liveActive && connected) {
+      liveActive = true;
+      liveMode = null;
+      _client.beginLive();
+    }
     notifyListeners();
     if (liveActive) _scheduleLiveSend();
+  }
+
+  /// Copia para os níveis ao vivo o que o cronograma manda agora.
+  /// Use notify: false quando chamado durante a montagem de uma tela.
+  void loadLiveFromSchedule({bool notify = true}) {
+    final now = DateTime.now();
+    final minute = now.hour * 60 + now.minute;
+    for (var c = 0; c < live.length; c++) {
+      live[c] = curves[c].valueAt(minute);
+    }
+    if (notify) notifyListeners();
   }
 
   void setAllLive(int value) {
     for (var i = 0; i < live.length; i++) {
       live[i] = value;
+    }
+    if (!liveActive && connected) {
+      liveActive = true;
+      liveMode = null;
+      _client.beginLive();
     }
     notifyListeners();
     if (liveActive) _scheduleLiveSend();
@@ -181,11 +316,11 @@ class Tc421Controller extends ChangeNotifier {
       _liveDirty = true;
       return;
     }
-    _client.sendLive(live);
+    _client.sendLive(liveOutput);
     _liveTimer = Timer(const Duration(milliseconds: 80), () {
       if (_liveDirty) {
         _liveDirty = false;
-        _client.sendLive(live);
+        _client.sendLive(liveOutput);
       }
     });
   }
@@ -231,7 +366,7 @@ class Tc421Controller extends ChangeNotifier {
     simMinute = elapsed * dayMinutes ~/ total;
     _client.sendLive(List.generate(
       Tc421Protocol.channelCount,
-      (c) => curves[c].valueAt(simMinute),
+      (c) => channelOn[c] ? curves[c].valueAt(simMinute) : 0,
     ));
     notifyListeners();
   }
@@ -386,6 +521,29 @@ class Tc421Controller extends ChangeNotifier {
     }
   }
 
+  /// Anda o ponto escolhido 30 min para frente (+1) ou para trás (-1).
+  void stepSelectedPoint(int direction) {
+    final p = currentCurve.points[selectedPoint];
+    currentCurve.move(selectedPoint, p.minute + direction * minuteStep, p.value);
+    notifyListeners();
+  }
+
+  /// Zera a curva do canal escolhido o dia todo.
+  void clearSelectedChannel() {
+    curves[selectedChannel] = DayCurve.flat(0);
+    selectedPoint = 0;
+    profileName = 'Personalizado';
+    notifyListeners();
+  }
+
+  /// Copia a curva do canal escolhido para outro canal.
+  void copyCurveTo(int target) {
+    if (target == selectedChannel) return;
+    curves[target] = curves[selectedChannel].copy();
+    profileName = 'Personalizado';
+    notifyListeners();
+  }
+
   /// Copia a curva do canal escolhido para todos os outros.
   void copyCurveToAll() {
     final src = curves[selectedChannel];
@@ -434,4 +592,11 @@ class Tc421Controller extends ChangeNotifier {
     _client.close();
     super.dispose();
   }
+}
+
+/// Perfil salvo pelo usuário: nome e as curvas dos 5 canais.
+class SavedProfile {
+  SavedProfile(this.name, this.curves);
+  final String name;
+  final List<DayCurve> curves;
 }

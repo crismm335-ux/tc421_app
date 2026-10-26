@@ -7,10 +7,36 @@ import 'aqua.dart';
 
 const List<String> animalKinds = ['Peixe', 'Coral', 'Invertebrado'];
 
+const Map<String, String> kindPlural = {
+  'Peixe': 'Peixes',
+  'Coral': 'Corais',
+  'Invertebrado': 'Invertebrados',
+};
+
 const Map<String, IconData> animalIcons = {
   'Peixe': Icons.set_meal_outlined,
   'Coral': Icons.spa_outlined,
   'Invertebrado': Icons.bug_report_outlined,
+};
+
+const Map<String, Color> kindColors = {
+  'Peixe': Color(0xFFFF8A3D),
+  'Coral': Color(0xFFFF3D8B),
+  'Invertebrado': Color(0xFF3FD2FF),
+};
+
+/// Tipos de cada grupo (opcional no cadastro).
+const Map<String, List<String>> kindGroups = {
+  'Peixe': [],
+  'Coral': ['LPS', 'SPS', 'Mole', 'Anêmona'],
+  'Invertebrado': ['Camarão', 'Caranguejo', 'Ermitão', 'Caramujo', 'Ouriço', 'Estrela'],
+};
+
+/// Sugestões de nome que aparecem ao cadastrar.
+const Map<String, List<String>> kindExamples = {
+  'Peixe': ['Palhaço ocellaris', 'Cirurgião amarelo', 'Gobi', 'Donzela'],
+  'Coral': ['Euphyllia (martelo)', 'Acropora', 'Zoanthus', 'Montipora', 'Favia'],
+  'Invertebrado': ['Camarão limpador', 'Ermitão pata azul', 'Caramujo Turbo', 'Ouriço'],
 };
 
 String dateLabel(DateTime d) =>
@@ -20,6 +46,7 @@ class Animal {
   Animal({
     required this.name,
     required this.kind,
+    this.group = '',
     this.qty = 1,
     this.notes = '',
     String? date,
@@ -27,23 +54,34 @@ class Animal {
 
   String name;
   String kind;
+  String group;
   int qty;
   String notes;
   String date;
 
-  Map<String, dynamic> toJson() =>
-      {'name': name, 'kind': kind, 'qty': qty, 'notes': notes, 'date': date};
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'kind': kind,
+        'group': group,
+        'qty': qty,
+        'notes': notes,
+        'date': date,
+      };
 
   factory Animal.fromJson(Map<String, dynamic> j) => Animal(
         name: (j['name'] ?? '') as String,
         kind: (j['kind'] ?? 'Peixe') as String,
+        group: (j['group'] ?? '') as String,
         qty: (j['qty'] ?? 1) as int,
         notes: (j['notes'] ?? '') as String,
         date: j['date'] as String?,
       );
+
+  /// "Coral LPS", "Invertebrado · Camarão", "Peixe".
+  String get kindLabel => group.isEmpty ? kind : '$kind $group';
 }
 
-/// Aba "Animais": cadastro dos peixes, corais e invertebrados do aquário.
+/// Aba "Animais": peixes, corais e invertebrados do aquário.
 class AnimalsPage extends StatefulWidget {
   const AnimalsPage({super.key});
 
@@ -80,15 +118,33 @@ class _AnimalsPageState extends State<AnimalsPage> {
         _key, jsonEncode(animals.map((a) => a.toJson()).toList()));
   }
 
-  Future<void> _edit([Animal? animal]) async {
+  InputDecoration _field(String label) => InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Aqua.muted),
+        filled: true,
+        fillColor: Aqua.field,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Aqua.buttonLine),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Aqua.cyan),
+        ),
+      );
+
+  Future<void> _edit({Animal? animal, String? newKind}) async {
     final name = TextEditingController(text: animal?.name ?? '');
     final notes = TextEditingController(text: animal?.notes ?? '');
-    var kind = animal?.kind ?? 'Peixe';
+    var kind = animal?.kind ?? newKind ?? 'Peixe';
+    var group = animal?.group ?? '';
     var qty = animal?.qty ?? 1;
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Aqua.panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
           padding: EdgeInsets.fromLTRB(
@@ -98,31 +154,73 @@ class _AnimalsPageState extends State<AnimalsPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(animal == null ? 'Novo animal' : 'Editar animal',
+                Text(
+                    animal == null
+                        ? 'Novo ${kind.toLowerCase()}'
+                        : 'Editar ${kind.toLowerCase()}',
                     style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: name,
-                  decoration: const InputDecoration(
-                      labelText: 'Nome (ex.: Peixe-palhaço)'),
-                ),
-                const SizedBox(height: 12),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Aqua.text)),
+                const SizedBox(height: 14),
+                const Text('Grupo', style: TextStyle(color: Aqua.muted)),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
+                  runSpacing: 8,
                   children: [
                     for (final k in animalKinds)
                       ChoiceChip(
+                        avatar: Icon(animalIcons[k], size: 18, color: kindColors[k]),
                         label: Text(k),
                         selected: kind == k,
-                        onSelected: (_) => setSheet(() => kind = k),
+                        onSelected: (_) => setSheet(() {
+                          kind = k;
+                          group = '';
+                        }),
+                      ),
+                  ],
+                ),
+                if (kindGroups[kind]!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Tipo', style: TextStyle(color: Aqua.muted)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final g in kindGroups[kind]!)
+                        ChoiceChip(
+                          label: Text(g),
+                          selected: group == g,
+                          onSelected: (_) =>
+                              setSheet(() => group = group == g ? '' : g),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 14),
+                TextField(
+                  controller: name,
+                  style: const TextStyle(color: Aqua.text),
+                  decoration: _field('Nome'),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final ex in kindExamples[kind]!)
+                      ActionChip(
+                        label: Text(ex, style: const TextStyle(fontSize: 12)),
+                        onPressed: () => setSheet(() => name.text = ex),
                       ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Text('Quantidade'),
+                    const Text('Quantidade', style: TextStyle(color: Aqua.text)),
                     const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
@@ -131,7 +229,9 @@ class _AnimalsPageState extends State<AnimalsPage> {
                     ),
                     Text('$qty',
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w700)),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Aqua.text)),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
                       onPressed: () => setSheet(() => qty++),
@@ -140,8 +240,8 @@ class _AnimalsPageState extends State<AnimalsPage> {
                 ),
                 TextField(
                   controller: notes,
-                  decoration:
-                      const InputDecoration(labelText: 'Observações'),
+                  style: const TextStyle(color: Aqua.text),
+                  decoration: _field('Observações (posição, alimentação...)'),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -170,12 +270,14 @@ class _AnimalsPageState extends State<AnimalsPage> {
           animals.add(Animal(
               name: name.text.trim(),
               kind: kind,
+              group: group,
               qty: qty,
               notes: notes.text.trim()));
         } else {
           animal
             ..name = name.text.trim()
             ..kind = kind
+            ..group = group
             ..qty = qty
             ..notes = notes.text.trim();
         }
@@ -191,37 +293,50 @@ class _AnimalsPageState extends State<AnimalsPage> {
   Widget build(BuildContext context) {
     int count(String k) =>
         animals.where((a) => a.kind == k).fold(0, (s, a) => s + a.qty);
-    final shown =
-        animals.where((a) => filter == 'Todos' || a.kind == filter).toList();
+    final kinds = filter == 'Todos' ? animalKinds : [filter];
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
       children: [
+        // Contagem por grupo (toque filtra)
         Row(
           children: [
             for (final k in animalKinds) ...[
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Aqua.field,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Aqua.line),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                          const {
-                            'Peixe': 'Peixes',
-                            'Coral': 'Corais',
-                            'Invertebrado': 'Invertebrados',
-                          }[k]!,
-                          style: const TextStyle(
-                              color: Aqua.muted, fontSize: 12)),
-                      Text('${count(k)}',
-                          style: const TextStyle(
-                              fontSize: 24, fontWeight: FontWeight.w800)),
-                    ],
+                child: GestureDetector(
+                  onTap: () => setState(() => filter = filter == k ? 'Todos' : k),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Aqua.field,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: filter == k ? kindColors[k]! : Aqua.line,
+                          width: filter == k ? 1.6 : 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(animalIcons[k], size: 18, color: kindColors[k]),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(kindPlural[k]!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Aqua.muted, fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('${count(k)}',
+                            style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: Aqua.text)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -231,7 +346,7 @@ class _AnimalsPageState extends State<AnimalsPage> {
         ),
         const SizedBox(height: 12),
         AquaTabs(
-          labels: const ['Todos', 'Peixe', 'Coral', 'Invert.'],
+          labels: const ['Todos', 'Peixes', 'Corais', 'Invert.'],
           selected: ['Todos', ...animalKinds]
               .indexOf(filter)
               .clamp(0, 3)
@@ -239,36 +354,86 @@ class _AnimalsPageState extends State<AnimalsPage> {
           onChanged: (i) => setState(
               () => filter = ['Todos', 'Peixe', 'Coral', 'Invertebrado'][i]),
         ),
-        const SizedBox(height: 12),
-        if (shown.isEmpty)
-          const AquaPanel(
-            child: Text(
-              'Nenhum animal cadastrado. Toque em "Adicionar animal" para começar.',
-              style: TextStyle(color: Aqua.muted),
-            ),
-          ),
-        for (final a in shown)
-          AquaPanel(
-            padding: EdgeInsets.zero,
-            child: ListTile(
-              leading: Icon(animalIcons[a.kind], color: Aqua.cyan),
-              title: Text(a.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(
-                  '${a.kind} · desde ${a.date}${a.notes.isEmpty ? '' : '\n${a.notes}'}'),
-              isThreeLine: a.notes.isNotEmpty,
-              trailing: Text('×${a.qty}',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800)),
-              onTap: () => _edit(a),
-            ),
-          ),
-        FilledButton.icon(
-          icon: const Icon(Icons.add),
-          label: const Text('Adicionar animal'),
-          onPressed: () => _edit(),
-        ),
+        const SizedBox(height: 14),
+        for (final k in kinds) ..._section(k),
       ],
     );
+  }
+
+  /// Um grupo: título com total, os cadastrados e o botão de adicionar.
+  List<Widget> _section(String k) {
+    final list = animals.where((a) => a.kind == k).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final color = kindColors[k]!;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 2),
+        child: Row(
+          children: [
+            Icon(animalIcons[k], color: color, size: 20),
+            const SizedBox(width: 8),
+            Text(kindPlural[k]!,
+                style: const TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w600, color: Aqua.text)),
+            const Spacer(),
+            Text('${list.length} ${list.length == 1 ? 'espécie' : 'espécies'}',
+                style: const TextStyle(fontSize: 12, color: Aqua.muted)),
+          ],
+        ),
+      ),
+      if (list.isEmpty)
+        AquaPanel(
+          padding: const EdgeInsets.all(14),
+          child: Text(
+            'Nenhum ${k == 'Coral' ? 'coral' : k.toLowerCase()} cadastrado ainda.',
+            style: const TextStyle(color: Aqua.muted),
+          ),
+        ),
+      for (final a in list)
+        AquaPanel(
+          padding: EdgeInsets.zero,
+          margin: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => _edit(animal: a),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+              child: Row(
+                children: [
+                  AquaOrb(icon: animalIcons[a.kind]!, color: color, size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(a.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, color: Aqua.text)),
+                        Text(
+                            '${a.kindLabel} · desde ${a.date}${a.notes.isEmpty ? '' : '\n${a.notes}'}',
+                            style: const TextStyle(
+                                fontSize: 12, color: Aqua.muted)),
+                      ],
+                    ),
+                  ),
+                  Text('×${a.qty}',
+                      style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Aqua.text)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16, top: 2),
+        child: OutlinedButton.icon(
+          icon: Icon(Icons.add, color: color),
+          label: Text('Adicionar ${k == 'Coral' ? 'coral' : k.toLowerCase()}'),
+          onPressed: () => _edit(newKind: k),
+        ),
+      ),
+    ];
   }
 }

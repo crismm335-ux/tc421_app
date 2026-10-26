@@ -6,7 +6,7 @@ import 'aqua.dart';
 import 'aquarium.dart';
 import 'controller.dart';
 import 'curve.dart';
-import 'equipment_page.dart' show SensorCard;
+import 'home_info.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({
@@ -19,7 +19,8 @@ class HomePage extends StatelessWidget {
   final Tc421Controller controller;
   final AquariumController aquarium;
 
-  /// 0 início, 1 canais, 2 programação, 3 perfis, 4 aquário, 5 conexão.
+  /// 0 início, 1 canais, 2 programação, 3 perfis, 4 equipamentos,
+  /// 5 conexão, 7 animais, 8 testes.
   final void Function(int tab) onGo;
 
   static const _recife = [80, 70, 48, 30, 40];
@@ -30,307 +31,330 @@ class HomePage extends StatelessWidget {
     final c = controller;
     final a = aquarium;
     final masterOn = !(c.liveActive && c.liveMode == 'Desligado');
+    final ip = c.manualIp ?? 'rede local';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: EdgeInsets.zero,
       children: [
         // Cabeçalho
-        const SizedBox(height: 4),
-        Text.rich(
-          const TextSpan(
-            text: 'AQUA ',
+        SizedBox(
+          height: 126,
+          child: Stack(
             children: [
-              TextSpan(text: 'LIGHT', style: TextStyle(color: Aqua.cyan)),
+              Positioned(
+                top: 8,
+                right: 14,
+                child: AquaCircleButton(
+                    icon: Icons.settings_outlined,
+                    onPressed: () => onGo(5),
+                    tooltip: 'Conexão e ajustes'),
+              ),
+              const Positioned(
+                top: 14,
+                left: 64,
+                right: 64,
+                child: Column(
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        text: 'AQUA ',
+                        children: [
+                          TextSpan(
+                              text: 'LIGHT',
+                              style: TextStyle(color: Aqua.cyan)),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(color: Color(0xCC000814), blurRadius: 12),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text('TC421',
+                        style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                            shadows: [
+                              Shadow(color: Color(0xCC000814), blurRadius: 8)
+                            ])),
+                    SizedBox(height: 4),
+                    Text('ILUMINAÇÃO PARA AQUÁRIOS MARINHOS',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11,
+                            letterSpacing: 0.6,
+                            color: Color(0xFFCFE2FF),
+                            shadows: [
+                              Shadow(color: Color(0xCC000814), blurRadius: 8)
+                            ])),
+                  ],
+                ),
+              ),
             ],
           ),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 34,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1,
-            color: Aqua.text,
-          ),
         ),
-        const Text('CONTROLADORA DO AQUÁRIO MARINHO',
-            textAlign: TextAlign.center,
-            style:
-                TextStyle(fontSize: 11, letterSpacing: 1.5, color: Aqua.muted)),
-        const SizedBox(height: 14),
 
-        // Conexão + modo
-        AquaPanel(
-          padding: const EdgeInsets.all(14),
-          child: Row(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(c.connected ? Icons.wifi : Icons.wifi_off,
-                  color: c.connected ? Aqua.cyan : Aqua.muted),
-              const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: () => onGo(5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              const SectionLabel(
+                  icon: Icons.lightbulb_outline,
+                  text: 'LUMINÁRIA',
+                  color: Aqua.cyan),
+              // Conexão + modo
+              Transform.translate(
+                offset: Offset.zero,
+                child: AquaPanel(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
                     children: [
-                      Text(
-                          c.connected
-                              ? 'Luminária conectada'
-                              : (c.searching
-                                  ? 'Procurando...'
-                                  : 'Luminária sem conexão'),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, color: Aqua.text)),
-                      Text(
-                          c.connected
-                              ? '● ${c.manualIp ?? 'rede local'}'
-                              : 'Toque para conectar',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: c.connected
-                                  ? const Color(0xFF47E08A)
-                                  : Aqua.muted)),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => onGo(5),
+                          child: Row(
+                            children: [
+                              Icon(c.connected ? Icons.wifi : Icons.wifi_off,
+                                  color: c.connected ? Aqua.cyan : Aqua.muted),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text.rich(
+                                      TextSpan(
+                                        text: 'Luminária ',
+                                        children: [
+                                          TextSpan(
+                                            text: c.connected
+                                                ? 'Conectada'
+                                                : (c.searching
+                                                    ? 'Procurando'
+                                                    : 'Sem conexão'),
+                                            style: TextStyle(
+                                                color: c.connected
+                                                    ? Aqua.cyan
+                                                    : Aqua.amber),
+                                          ),
+                                        ],
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Aqua.text),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      c.connected ? '● TC421 · $ip' : 'TC421 · toque para conectar',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: c.connected
+                                              ? Aqua.green
+                                              : Aqua.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.calendar_month_outlined,
+                          color: Aqua.text, size: 24),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c.liveActive ? 'Modo manual' : 'Modo automático',
+                              style: const TextStyle(
+                                  fontSize: 13, color: Aqua.text)),
+                          const SizedBox(height: 2),
+                          Text(
+                              c.liveActive
+                                  ? (c.liveMode ?? 'Ao vivo')
+                                  : 'Fotoperíodo ativo',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Aqua.muted)),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ),
-              const Icon(Icons.calendar_month_outlined, color: Aqua.cyan),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(c.liveActive ? 'Modo manual' : 'Modo automático',
-                      style: const TextStyle(
-                          fontSize: 12, color: Aqua.text)),
-                  Text(c.liveActive ? (c.liveMode ?? 'Ao vivo') : 'Fotoperíodo ativo',
-                      style:
-                          const TextStyle(fontSize: 11, color: Aqua.muted)),
-                ],
-              ),
-            ],
-          ),
-        ),
 
-        // Intensidade
-        SizedBox(
-          height: 210,
-          child: CustomPaint(
-            painter: _GaugePainter(c.currentIntensity / 100),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(
-                      text: '${c.currentIntensity}',
-                      children: const [
-                        TextSpan(text: '%', style: TextStyle(fontSize: 22)),
+              // Intensidade + modos
+              AquaPanel(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 14),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 220,
+                      child: CustomPaint(
+                        painter: _GaugePainter(c.currentIntensity / 100),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text.rich(
+                                TextSpan(
+                                  text: '${c.currentIntensity}',
+                                  children: const [
+                                    TextSpan(
+                                        text: '%',
+                                        style: TextStyle(fontSize: 26)),
+                                  ],
+                                ),
+                                style: const TextStyle(
+                                    fontSize: 60,
+                                    fontWeight: FontWeight.w700,
+                                    color: Aqua.text,
+                                    height: 1),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('INTENSIDADE',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      letterSpacing: 1.2,
+                                      color: Aqua.muted)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _Quick(
+                          icon: Icons.power_settings_new,
+                          color: Aqua.cyan,
+                          title: 'MASTER',
+                          sub: masterOn ? 'Ligado' : 'Desligado',
+                          active: masterOn,
+                          subColor: masterOn ? Aqua.green : Aqua.muted,
+                          onTap: !c.connected
+                              ? null
+                              : () {
+                                  if (masterOn) {
+                                    c.applyLiveLevels(
+                                        const [0, 0, 0, 0, 0], 'Desligado');
+                                  } else {
+                                    c.backToSchedule();
+                                  }
+                                },
+                        ),
+                        _Quick(
+                          icon: Icons.wb_sunny_outlined,
+                          color: const Color(0xFFFFC53D),
+                          title: 'Modo Recife',
+                          sub: c.liveMode == 'Recife' ? 'Ativo' : 'Perfil ativo',
+                          active: c.liveMode == 'Recife' || !c.liveActive,
+                          onTap: !c.connected
+                              ? null
+                              : () => c.applyLiveLevels(_recife, 'Recife'),
+                        ),
+                        _Quick(
+                          icon: Icons.nightlight_round,
+                          color: const Color(0xFF5D8BFF),
+                          title: 'Modo Noturno',
+                          sub: c.liveMode == 'Noturno' ? 'Ligado' : 'Desligado',
+                          active: c.liveMode == 'Noturno',
+                          onTap: !c.connected
+                              ? null
+                              : () => c.applyLiveLevels(_noturno, 'Noturno'),
+                        ),
                       ],
                     ),
-                    style: const TextStyle(
-                        fontSize: 54,
-                        fontWeight: FontWeight.w800,
-                        color: Aqua.text),
-                  ),
-                  const Text('INTENSIDADE',
-                      style: TextStyle(
-                          fontSize: 12, letterSpacing: 1, color: Aqua.muted)),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ),
-        ),
 
-        // Atalhos
-        Row(
-          children: [
-            _Quick(
-              icon: Icons.power_settings_new,
-              title: 'MASTER',
-              sub: masterOn ? 'Ligado' : 'Desligado',
-              subColor: masterOn ? const Color(0xFF47E08A) : Aqua.muted,
-              onTap: !c.connected
-                  ? null
-                  : () {
-                      if (masterOn) {
-                        c.applyLiveLevels(const [0, 0, 0, 0, 0], 'Desligado');
-                      } else {
-                        c.backToSchedule();
-                      }
-                    },
-            ),
-            _Quick(
-              icon: Icons.wb_sunny_outlined,
-              title: 'Modo Recife',
-              sub: c.liveMode == 'Recife' ? 'Ativo' : 'Perfil ativo',
-              iconColor: const Color(0xFF38A9FF),
-              onTap: !c.connected
-                  ? null
-                  : () => c.applyLiveLevels(_recife, 'Recife'),
-            ),
-            _Quick(
-              icon: Icons.nightlight_round,
-              title: 'Modo Noturno',
-              sub: c.liveMode == 'Noturno' ? 'Ligado' : 'Desligado',
-              iconColor: const Color(0xFFB97CFF),
-              onTap: !c.connected
-                  ? null
-                  : () => c.applyLiveLevels(_noturno, 'Noturno'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+              // Resumo do dia
+              _DaySummary(controller: c, onTap: () => onGo(2)),
 
-        // Resumo do dia
-        _DaySummary(controller: c, onTap: () => onGo(2)),
-
-        // Conexão do aquário (ESP32)
-        AquaPanel(
-          padding: const EdgeInsets.all(14),
-          child: InkWell(
-            onTap: () => onGo(4),
-            child: Row(
-              children: [
-                Icon(a.connected ? Icons.water : Icons.water_outlined,
-                    color: a.connected ? Aqua.cyan : Aqua.muted),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                          a.connected
-                              ? 'Aquário conectado'
-                              : 'Aquário sem conexão',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, color: Aqua.text)),
-                      Text(
-                          a.connected
-                              ? '● ESP32${a.ip.isEmpty ? '' : ' · ${a.ip}'}'
-                              : 'Toque para conectar o ESP32',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: a.connected
-                                  ? const Color(0xFF47E08A)
-                                  : Aqua.muted)),
-                    ],
+              const SizedBox(height: 10),
+              // Informações do aquário escolhidas pelo usuário
+              HomeAquariumInfo(
+                aquarium: a,
+                onGo: onGo,
+                // Conexão do aquário (ESP32), logo abaixo do título
+                connection: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => onGo(4),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 4, 0, 6),
+                      child: Row(
+                        children: [
+                          Icon(a.connected ? Icons.water : Icons.water_outlined,
+                              color: a.connected ? Aqua.cyan : Aqua.muted),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    a.connected
+                                        ? 'Aquário conectado'
+                                        : 'Aquário sem conexão',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Aqua.text)),
+                                Text(
+                                    a.connected
+                                        ? '● ESP32${a.ip.isEmpty ? '' : ' · ${a.ip}'}'
+                                        : 'Toque para conectar o ESP32',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: a.connected
+                                            ? Aqua.green
+                                            : Aqua.muted)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right, color: Aqua.muted),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                const Icon(Icons.chevron_right, color: Aqua.muted),
-              ],
-            ),
-          ),
-        ),
-
-        // Aquário
-        if (a.connected && a.alarms.isNotEmpty)
-          AquaPanel(
-            color: const Color(0xFF3A1B12),
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(children: [
-                  Icon(Icons.warning_amber, color: Color(0xFFFFB347)),
-                  SizedBox(width: 8),
-                  Text('Alertas',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: Aqua.text)),
-                ]),
-                const SizedBox(height: 6),
-                for (final alarm in a.alarms)
-                  Text('• $alarm', style: const TextStyle(color: Aqua.text)),
-              ],
-            ),
-          ),
-        if (!a.connected)
-          AquaPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionTitle('Seu aquário'),
-                Text(a.status, style: const TextStyle(color: Aqua.muted)),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  icon: const Icon(Icons.water_outlined, size: 18),
-                  label: Text(a.ip.isEmpty
-                      ? 'Conectar ao aquário'
-                      : 'Abrir equipamentos'),
-                  onPressed: () => onGo(4),
-                ),
-              ],
-            ),
-          )
-        else ...[
-          Row(
-            children: [
-              SensorCard('Temperatura', a.temp, '°C', 1,
-                  warn: a.temp == null),
-              const SizedBox(width: 8),
-              SensorCard('pH', a.ph, '', 2,
-                  note: a.adsOk ? (a.phCal ? null : 'calibrar') : 'sem ADS'),
-              const SizedBox(width: 8),
-              SensorCard('Salinidade', a.salinity, 'ppt', 1,
-                  note:
-                      a.adsOk ? (a.ecCal ? null : 'calibrar') : 'sem ADS'),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          AquaPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionTitle('Níveis de água'),
-                _LevelRow(
-                  'Sump',
-                  a.tpaMinLevel
-                      ? 'Nível mínimo'
-                      : (a.atoSumpLow ? 'Baixo, repondo' : 'Normal'),
-                  warn: a.tpaMinLevel || a.atoSumpLow,
-                ),
-                _LevelRow(
-                  'Galão de reposição',
-                  a.atoReservoirEmpty ? 'Vazio' : 'Com água',
-                  warn: a.atoReservoirEmpty,
-                ),
-                if (a.tpaState != 0) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    switch (a.tpaState) {
-                      1 => 'TPA em andamento: retirando água do sump',
-                      2 => 'TPA em andamento: aguardando',
-                      _ => 'TPA em andamento: repondo água pronta',
-                    },
-                    style: const TextStyle(color: Aqua.cyan),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.water_outlined, size: 18),
-                  label: const Text('Abrir equipamentos'),
-                  onPressed: () => onGo(4),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ],
     );
   }
 }
 
+/// Botão de modo: círculo brilhante, título e situação.
 class _Quick extends StatelessWidget {
   const _Quick({
     required this.icon,
+    required this.color,
     required this.title,
     required this.sub,
     required this.onTap,
-    this.iconColor = Aqua.cyan,
+    this.active = false,
     this.subColor = Aqua.muted,
   });
 
   final IconData icon;
+  final Color color;
   final String title;
   final String sub;
   final VoidCallback? onTap;
-  final Color iconColor;
+  final bool active;
   final Color subColor;
 
   @override
@@ -340,33 +364,25 @@ class _Quick extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Opacity(
-          opacity: onTap == null ? 0.5 : 1,
-          child: Column(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF05213F),
-                  border: Border.all(color: iconColor, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                        color: iconColor.withOpacity(0.35), blurRadius: 12),
-                  ],
-                ),
-                child: Icon(icon, color: iconColor, size: 28),
-              ),
-              const SizedBox(height: 6),
-              Text(title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Aqua.text)),
-              Text(sub,
-                  style: TextStyle(fontSize: 11, color: subColor)),
-            ],
+          opacity: onTap == null ? 0.55 : 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              children: [
+                AquaOrb(icon: icon, color: color, size: 62, active: true),
+                const SizedBox(height: 8),
+                Text(title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Aqua.text)),
+                const SizedBox(height: 2),
+                Text(sub,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12.5, color: subColor)),
+              ],
+            ),
           ),
         ),
       ),
@@ -399,7 +415,6 @@ class _DaySummary extends StatelessWidget {
         last = i;
       }
     }
-    String t(int i) => timeLabel(i * minuteStep);
     var dusk = last;
     for (var i = avg.length - 1; i >= 0; i--) {
       if (avg[i] >= avg[peakI] * 0.5) {
@@ -408,8 +423,11 @@ class _DaySummary extends StatelessWidget {
       }
     }
     final has = first >= 0;
+    final moments = has
+        ? [first * minuteStep, peakI * minuteStep, dusk * minuteStep, last * minuteStep]
+        : <int>[];
     return AquaPanel(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -418,40 +436,47 @@ class _DaySummary extends StatelessWidget {
               const Expanded(
                 child: Text('Resumo do dia',
                     style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
                         color: Aqua.text)),
               ),
               TextButton(
-                  onPressed: onTap, child: const Text('Ver programação ›')),
+                onPressed: onTap,
+                child: const Text('Ver programação  ›',
+                    style: TextStyle(color: Aqua.cyan)),
+              ),
             ],
           ),
-          Container(
-            height: 6,
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(99),
-              gradient: const LinearGradient(colors: [
-                Color(0xFFFFB347),
-                Color(0xFF38A9FF),
-                Color(0xFFFFD27A),
-                Color(0xFFB97CFF),
-              ]),
-            ),
-          ),
           if (!has)
-            const Text('Nenhum ponto ligado no cronograma.',
-                style: TextStyle(color: Aqua.muted))
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _Moment(t(first), 'Amanhecer'),
-                _Moment(t(peakI), 'Pico'),
-                _Moment(t(dusk), 'Entardecer'),
-                _Moment(t(last), 'Noite'),
-              ],
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Text('Nenhum ponto ligado no cronograma.',
+                  style: TextStyle(color: Aqua.muted)),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                height: 34,
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: _DayBarPainter(moments),
+                ),
+              ),
             ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                children: [
+                  _Moment(timeLabel(moments[0]), 'Amanhecer'),
+                  _Moment(timeLabel(moments[1]), 'Pico'),
+                  _Moment(timeLabel(moments[2]), 'Entardecer'),
+                  _Moment(timeLabel(moments[3]), 'Noite'),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -465,17 +490,94 @@ class _Moment extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Column(
-        children: [
-          Text(time,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: Aqua.text)),
-          Text(label, style: const TextStyle(fontSize: 11, color: Aqua.muted)),
-        ],
+  Widget build(BuildContext context) => Expanded(
+        child: Column(
+          children: [
+            Text(time,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Aqua.text)),
+            Text(label,
+                style: const TextStyle(fontSize: 12, color: Aqua.muted)),
+          ],
+        ),
       );
 }
 
-/// Arco de intensidade (270°).
+/// Barra do dia: sol à esquerda, lua à direita, pontos em amanhecer, pico,
+/// entardecer e noite. Os pontos ficam alinhados com as quatro colunas.
+class _DayBarPainter extends CustomPainter {
+  _DayBarPainter(this.moments);
+
+  final List<int> moments;
+
+  static const _dots = [
+    Color(0xFFFFB347),
+    Color(0xFF3FD2FF),
+    Color(0xFFFFC53D),
+    Color(0xFFB06BFF),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cy = size.height / 2;
+    final colW = size.width / 4;
+    final xs = [for (var i = 0; i < 4; i++) colW * i + colW / 2];
+    final bar = Rect.fromLTRB(xs.first, cy - 3, xs.last, cy + 3);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bar, const Radius.circular(3)),
+      Paint()
+        ..shader = const LinearGradient(colors: [
+          Color(0xFFFFB347),
+          Color(0xFF3FD2FF),
+          Color(0xFF3FD2FF),
+          Color(0xFFFFC53D),
+          Color(0xFFB06BFF),
+        ]).createShader(bar),
+    );
+    // Sol e lua nas pontas
+    _icon(canvas, Icons.wb_sunny, Offset(xs.first - 26, cy), const Color(0xFFFFC53D));
+    _icon(canvas, Icons.brightness_3, Offset(xs.last + 26, cy), const Color(0xFFDDE6FF));
+    for (var i = 0; i < 4; i++) {
+      final o = Offset(xs[i], cy);
+      canvas.drawCircle(
+          o,
+          9,
+          Paint()
+            ..color = fade(_dots[i], 0.6)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+      canvas.drawCircle(o, 7, Paint()..color = _dots[i]);
+      canvas.drawCircle(
+          o,
+          7,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = Colors.white);
+    }
+  }
+
+  void _icon(Canvas canvas, IconData icon, Offset center, Color color) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+            fontSize: 22,
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+            color: color),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+  }
+
+  @override
+  bool shouldRepaint(covariant _DayBarPainter old) => true;
+}
+
+/// Arco de intensidade (270°) com brilho.
 class _GaugePainter extends CustomPainter {
   _GaugePainter(this.value);
 
@@ -484,10 +586,27 @@ class _GaugePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final radius = math.min(size.width, size.height) / 2 - 14;
+    final radius = math.min(size.width, size.height) / 2 - 16;
     final rect = Rect.fromCircle(center: center, radius: radius);
     const start = 0.75 * math.pi;
     const sweep = 1.5 * math.pi;
+    // Disco escuro no meio
+    canvas.drawCircle(
+      center,
+      radius - 12,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Color(0xFF0C2250), Color(0xFF050F27)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius - 12)),
+    );
+    canvas.drawCircle(
+      center,
+      radius - 12,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Aqua.line,
+    );
     canvas.drawArc(
       rect,
       start,
@@ -497,13 +616,26 @@ class _GaugePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 14
         ..strokeCap = StrokeCap.round
-        ..color = const Color(0xFF0A2C4D),
+        ..color = const Color(0xFF0E2550),
     );
     if (value > 0) {
+      final v = sweep * value.clamp(0.0, 1.0);
       canvas.drawArc(
         rect,
         start,
-        sweep * value.clamp(0.0, 1.0),
+        v,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 18
+          ..strokeCap = StrokeCap.round
+          ..color = fade(Aqua.cyan, 0.45)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+      );
+      canvas.drawArc(
+        rect,
+        start,
+        v,
         false,
         Paint()
           ..style = PaintingStyle.stroke
@@ -512,8 +644,7 @@ class _GaugePainter extends CustomPainter {
           ..shader = const SweepGradient(
             startAngle: start,
             endAngle: start + sweep,
-            colors: [Aqua.blue, Aqua.cyan],
-            transform: GradientRotation(0),
+            colors: [Aqua.blueDeep, Aqua.blue, Aqua.cyan],
           ).createShader(rect),
       );
     }
@@ -523,33 +654,78 @@ class _GaugePainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugePainter old) => old.value != value;
 }
 
-class _LevelRow extends StatelessWidget {
-  const _LevelRow(this.name, this.state, {this.warn = false});
+/// Divisor de seção do Início: ícone, nome e linha na cor da seção.
+class SectionLabel extends StatelessWidget {
+  const SectionLabel({
+    super.key,
+    required this.icon,
+    required this.text,
+    required this.color,
+    this.action,
+    this.onAction,
+  });
 
-  final String name;
-  final String state;
-  final bool warn;
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  /// Texto de um link à direita (ex.: "Personalizar").
+  final String? action;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    final color = warn ? const Color(0xFFFFB347) : Aqua.cyan;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
           Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: fade(color, 0.12),
+              border: Border.all(color: fade(color, 0.7)),
+              boxShadow: [BoxShadow(color: fade(color, 0.35), blurRadius: 8)],
+            ),
+            child: Icon(icon, size: 17, color: color),
           ),
           const SizedBox(width: 10),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.6,
+                  color: color)),
+          const SizedBox(width: 12),
           Expanded(
-              child: Text(name, style: const TextStyle(color: Aqua.text))),
-          Text(state,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                    colors: [fade(color, 0.6), fade(color, 0)]),
+              ),
+            ),
+          ),
+          if (action != null)
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onAction,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.tune, size: 16, color: Aqua.cyan),
+                    const SizedBox(width: 6),
+                    Text(action!,
+                        style: const TextStyle(fontSize: 13, color: Aqua.cyan)),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
-

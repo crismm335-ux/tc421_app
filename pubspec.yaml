@@ -1,7 +1,7 @@
 name: tc421_app
 description: App para controlar a controladora de LED TC421 (5 canais, WiFi) pela rede local.
 publish_to: "none"
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

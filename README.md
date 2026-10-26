@@ -50,9 +50,21 @@ Funciona por broadcast, sem precisar informar o IP. APK: `flutter build apk --re
 
 ## O que o app faz
 
-- **Conexão:** acha a controladora (por IP ou broadcast) e lê o MAC. Botão para sincronizar a hora.
-- **Controle:** 5 sliders. Com "Controle ao vivo" ligado, mandam os valores na hora (experimental).
-- **Cronograma:** 48 pontos (um a cada 30 min) x 5 canais, com presets, e envio para a controladora.
+Visual do painel neon (Aqua Light). Abas de baixo: **Início, Luminária, Equipamentos, Animais e Testes**. Dentro de Luminária ficam Canais, Programação e Perfis.
+
+- **Início:** status da TC421, intensidade de agora, modos MASTER /
+  Recife / Noturno, resumo do dia e "Seu aquário": o botão Personalizar escolhe o que aparece
+  (sensores, alertas, níveis, tomadas, TPA, último teste de KH/Ca/Mg/NO3/PO4 e animais).
+- **Canais:** cada canal com chave liga/desliga, barra e espectro. Mexer num canal com a luminária
+  conectada liga o controle ao vivo; "Voltar ao cronograma" desliga. Aba Espectro mostra a mistura.
+  Canal desligado vai como 0% ao vivo e no cronograma enviado.
+- **Programação:** Gráfico com os 5 canais (marque quais aparecem), pontos arrastáveis, horário com
+  setas de 30 em 30 min, Adicionar/Remover ponto, Duplicar curva, Limpar canal (com Desfazer) e envio.
+  Tabela com os pontos de cada canal. Simulação do dia na luminária (15, 30 ou 60 s).
+- **Perfis:** Biblioteca (Recife Natural, Predominância Azul, Cores Vibrantes, Crescimento
+  (LPS/SPS), Apenas Visual) e Meus Perfis (salvos no celular, mais exportar/importar JSON).
+- **Equipamentos, Animais e Testes:** cada um na sua aba.
+- A engrenagem no topo das telas abre a Conexão da luminária (IP, hora, nova busca).
 
 ## Pontos não confirmados em hardware
 
