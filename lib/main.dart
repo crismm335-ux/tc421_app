@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'animals_page.dart';
 import 'aqua.dart';
 import 'aquarium.dart';
 import 'controller.dart';
+import 'connection_panel.dart';
 import 'equipment_page.dart';
 import 'home_page.dart';
 import 'manual_page.dart';
 import 'profiles_page.dart';
 import 'schedule_page.dart';
+import 'tests_page.dart';
 
 void main() => runApp(const Tc421App());
 
@@ -17,7 +20,7 @@ class Tc421App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aqua Light TC421',
+      title: 'Aqua Light',
       debugShowCheckedModeBanner: false,
       theme: aquaTheme,
       darkTheme: aquaTheme,
@@ -38,7 +41,7 @@ class _HomeShellState extends State<HomeShell> {
   final Tc421Controller controller = Tc421Controller();
   final AquariumController aquarium = AquariumController();
   int tab = 0; // 0 Início, 1 Luminária, 2 Aquário
-  int lumSub = 1; // 0 Canais, 1 Programação, 2 Perfis
+  int lumSub = 1; // 0 Canais, 1 Programação, 2 Perfis, 3 Conexão
 
   @override
   void initState() {
@@ -55,7 +58,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   /// Códigos usados pelos botões das telas: 0 início, 1 canais,
-  /// 2 programação, 3 perfis, 4 aquário.
+  /// 2 programação, 3 perfis, 4 aquário, 5 conexão da luminária.
   void _go(int code) => setState(() {
         if (code == 0) {
           tab = 0;
@@ -63,7 +66,7 @@ class _HomeShellState extends State<HomeShell> {
           tab = 2;
         } else {
           tab = 1;
-          lumSub = code - 1;
+          lumSub = code == 5 ? 3 : code - 1;
         }
       });
 
@@ -78,32 +81,29 @@ class _HomeShellState extends State<HomeShell> {
           1 => Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<int>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(value: 0, label: Text('Canais')),
-                        ButtonSegment(value: 1, label: Text('Programação')),
-                        ButtonSegment(value: 2, label: Text('Perfis')),
-                      ],
-                      selected: {lumSub},
-                      onSelectionChanged: (s) =>
-                          setState(() => lumSub = s.first),
-                    ),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                  child: AquaTabs(
+                    labels: const ['Canais', 'Programação', 'Perfis', 'Conexão'],
+                    selected: lumSub,
+                    onChanged: (i) => setState(() => lumSub = i),
                   ),
                 ),
                 Expanded(
                   child: switch (lumSub) {
                     0 => ManualPage(controller: controller),
                     1 => SchedulePage(controller: controller),
-                    _ => ProfilesPage(controller: controller),
+                    2 => ProfilesPage(controller: controller),
+                    _ => ListView(
+                        padding: const EdgeInsets.all(12),
+                        children: [ConnectionPanel(controller: controller)],
+                      ),
                   },
                 ),
               ],
             ),
-          _ => EquipmentPage(aquarium: aquarium),
+          2 => EquipmentPage(aquarium: aquarium),
+          3 => const AnimalsPage(),
+          _ => const TestsPage(),
         };
         return Scaffold(
           backgroundColor: Aqua.bg,
@@ -112,7 +112,9 @@ class _HomeShellState extends State<HomeShell> {
               bottom: false,
               child: Column(
                 children: [
-                  _Header(controller: controller),
+                  if (tab != 0)
+                    AquaTitleBar(
+                        title: const ['', 'Luminária', 'Equipamentos', 'Animais', 'Testes'][tab]),
                   Expanded(child: RepaintBoundary(child: page)),
                 ],
               ),
@@ -124,84 +126,29 @@ class _HomeShellState extends State<HomeShell> {
             onDestinationSelected: (i) => setState(() => tab = i),
             destinations: const [
               NavigationDestination(
-                  icon: Icon(Icons.home_outlined), label: 'Início'),
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Início'),
               NavigationDestination(
-                  icon: Icon(Icons.lightbulb_outline), label: 'Luminária'),
+                  icon: Icon(Icons.lightbulb_outline),
+                  selectedIcon: Icon(Icons.lightbulb),
+                  label: 'Luminária'),
               NavigationDestination(
-                  icon: Icon(Icons.water_outlined), label: 'Aquário'),
+                  icon: Icon(Icons.power_outlined),
+                  selectedIcon: Icon(Icons.power),
+                  label: 'Equipamentos'),
+              NavigationDestination(
+                  icon: Icon(Icons.set_meal_outlined),
+                  selectedIcon: Icon(Icons.set_meal),
+                  label: 'Animais'),
+              NavigationDestination(
+                  icon: Icon(Icons.science_outlined),
+                  selectedIcon: Icon(Icons.science),
+                  label: 'Testes'),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.controller});
-
-  final Tc421Controller controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = controller.connected
-        ? '● CONECTADA'
-        : controller.searching
-            ? '● PROCURANDO'
-            : '● SEM CONEXÃO';
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      decoration: const BoxDecoration(
-        color: Color(0xEF031226),
-        border: Border(bottom: BorderSide(color: Aqua.line)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  const TextSpan(
-                    text: 'AQUA ',
-                    children: [
-                      TextSpan(
-                          text: 'LIGHT', style: TextStyle(color: Aqua.cyan)),
-                    ],
-                  ),
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                    color: Aqua.text,
-                  ),
-                ),
-                const Text(
-                  'TC421 · MARINE LIGHTING CONTROL',
-                  style: TextStyle(
-                      fontSize: 10, letterSpacing: 2, color: Aqua.muted),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(99),
-              border: Border.all(color: const Color(0xFF1B628E)),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 11,
-                color: controller.connected
-                    ? const Color(0xFF8FEEFF)
-                    : Aqua.muted,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

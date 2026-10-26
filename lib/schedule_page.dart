@@ -20,6 +20,7 @@ class _SchedulePageState extends State<SchedulePage> {
   // Enquanto o dedo está no gráfico, a página não rola (senão o arrasto
   // do ponto briga com a rolagem).
   bool _touchingChart = false;
+  int _section = 0; // 0 Gráfico, 1 Tabela, 2 Simulação
 
   Tc421Controller get c => widget.controller;
 
@@ -45,6 +46,13 @@ class _SchedulePageState extends State<SchedulePage> {
       physics: _touchingChart ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.all(12),
       children: [
+        AquaTabs(
+          labels: const ['Gráfico', 'Tabela', 'Simulação'],
+          selected: _section,
+          onChanged: (i) => setState(() => _section = i),
+        ),
+        const SizedBox(height: 12),
+        if (_section == 0) ...[
         AquaPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,6 +251,97 @@ class _SchedulePageState extends State<SchedulePage> {
           ),
         ),
 
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.upload),
+            label: const Text('Enviar para a controladora'),
+            onPressed: c.connected && !uploading ? c.uploadSchedule : null,
+          ),
+        ),
+        ],
+        if (_section == 1) ...[
+        AquaPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionTitle('Pontos · ${channelNames[ch]}'),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < channelColors.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          avatar: CircleAvatar(
+                              radius: 6, backgroundColor: channelColors[i]),
+                          label: Text('CH${i + 1}'),
+                          selected: ch == i,
+                          onSelected: (_) => c.selectChannel(i),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (var i = 0; i < c.pointCount; i++)
+                InkWell(
+                  onTap: () => c.selectPoint(i),
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Aqua.field,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: c.selectedPoint == i ? color : Aqua.line),
+                    ),
+                    child: Row(
+                      children: [
+                        Text('P${i + 1}',
+                            style: const TextStyle(color: Aqua.muted)),
+                        const SizedBox(width: 14),
+                        Text(timeLabel(c.currentCurve.points[i].minute),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Aqua.text)),
+                        const Spacer(),
+                        Text('${c.currentCurve.points[i].value}%',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, color: color)),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              Text('Toque num ponto e ajuste o horário e a intensidade abaixo.',
+                  style: muted),
+            ],
+          ),
+        ),
+        AquaPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Intensidade do ponto P${c.selectedPoint + 1}: ${point.value}%',
+                    style: muted),
+                Slider(
+                  value: point.value.toDouble(),
+                  min: 0,
+                  max: 100,
+                  divisions: 100,
+                  activeColor: color,
+                  onChanged: c.simulating
+                      ? null
+                      : (v) => c.setSelectedPointValue(v.round()),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (_section == 2) ...[
         // Simulação e envio
         AquaPanel(
           child: Column(
@@ -306,6 +405,7 @@ class _SchedulePageState extends State<SchedulePage> {
             ],
           ),
         ),
+        ],
       ],
     );
   }

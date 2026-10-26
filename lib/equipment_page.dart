@@ -95,21 +95,30 @@ class EquipmentPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.thermostat, size: 18),
-                label: const Text('Termostato'),
-                onPressed: () => _thermoDialog(context),
-              ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.science_outlined, size: 18),
-                label: const Text('Calibrar sondas'),
-                onPressed: () => _calibrationDialog(context),
-              ),
-            ],
+          AquaPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionTitle('Temperatura'),
+                Text(
+                  a.temp == null
+                      ? 'Sensor sem leitura.'
+                      : 'Agora: ${a.temp!.toStringAsFixed(1)} °C',
+                  style: const TextStyle(color: Aqua.muted),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.thermostat, size: 18),
+                  label: const Text('Controle de temperatura'),
+                  onPressed: () => _thermoDialog(context),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.science_outlined, size: 18),
+            label: const Text('Calibrar sondas'),
+            onPressed: () => _calibrationDialog(context),
           ),
           const SizedBox(height: 12),
 
@@ -198,7 +207,7 @@ class EquipmentPage extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Termostato'),
+        title: const Text('Controle de temperatura'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

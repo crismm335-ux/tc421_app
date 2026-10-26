@@ -139,3 +139,103 @@ class SectionTitle extends StatelessWidget {
                 fontSize: 18, fontWeight: FontWeight.w700, color: Aqua.text)),
       );
 }
+
+/// Abas em "pílula" (Controle | Espectro, Gráfico | Tabela | Simulação...).
+class AquaTabs extends StatelessWidget {
+  const AquaTabs({
+    super.key,
+    required this.labels,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF031426),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Aqua.line),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(i),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: i == selected ? Aqua.blue : Colors.transparent,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Text(
+                    labels[i],
+                    style: TextStyle(
+                      fontWeight:
+                          i == selected ? FontWeight.w700 : FontWeight.w500,
+                      color: i == selected ? Colors.white : Aqua.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Título centralizado das telas internas, com engrenagem para "Mais".
+class AquaTitleBar extends StatelessWidget {
+  const AquaTitleBar(
+      {super.key, required this.title, this.onSettings, this.onBack});
+
+  final String title;
+  final VoidCallback? onSettings;
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: onBack == null
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.chevron_left, color: Aqua.text),
+                    onPressed: onBack,
+                  ),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700, color: Aqua.text),
+            ),
+          ),
+          SizedBox(
+            width: 44,
+            child: onSettings == null
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Aqua.text),
+                    onPressed: onSettings,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

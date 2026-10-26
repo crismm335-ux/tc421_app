@@ -117,9 +117,48 @@ class Tc421Controller extends ChangeNotifier {
       _client.beginLive();
       _client.sendLive(live);
     } else {
+      liveMode = null;
       _client.endLive();
     }
     notifyListeners();
+  }
+
+  /// Modo rápido da tela inicial ("Recife", "Noturno"...); null = cronograma.
+  String? liveMode;
+
+  /// Média dos canais agora, segundo o cronograma (ou o ao vivo, se ativo).
+  int get currentIntensity {
+    if (liveActive) {
+      return (live.reduce((a, b) => a + b) / live.length).round();
+    }
+    final now = DateTime.now();
+    final minute = now.hour * 60 + now.minute;
+    var sum = 0;
+    for (final c in curves) {
+      sum += c.valueAt(minute);
+    }
+    return (sum / curves.length).round();
+  }
+
+  /// Liga o controle ao vivo com estes níveis.
+  void applyLiveLevels(List<int> levels, String mode) {
+    if (!connected) return;
+    for (var i = 0; i < live.length && i < levels.length; i++) {
+      live[i] = levels[i];
+    }
+    liveMode = mode;
+    if (!liveActive) {
+      liveActive = true;
+      _client.beginLive();
+    }
+    _client.sendLive(live);
+    notifyListeners();
+  }
+
+  /// Volta ao cronograma salvo na controladora.
+  void backToSchedule() {
+    liveMode = null;
+    setLiveActive(false);
   }
 
   void setLive(int channel, int value) {
