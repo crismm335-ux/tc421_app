@@ -23,6 +23,9 @@ jobs:
           flutter config --enable-windows-desktop
           flutter create --project-name tc421_app --platforms=windows --org br.fisionit .
           rm -f test/widget_test.dart
+          # Título da janela e nome do programa.
+          sed -i 's|L"tc421_app"|L"AQUA LIGHT"|' windows/runner/main.cpp
+          sed -i 's|set(BINARY_NAME "tc421_app")|set(BINARY_NAME "AquaLight")|' windows/CMakeLists.txt
 
       - name: Baixar dependências
         run: flutter pub get

@@ -9,6 +9,7 @@ rm -f test/widget_test.dart
 # O app só funciona com rede: garante a permissão de internet no Android (release).
 MANIFEST=android/app/src/main/AndroidManifest.xml
 if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+  sed -i 's|android:label="[^"]*"|android:label="AQUA LIGHT"|' "$MANIFEST"
   sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"|' "$MANIFEST"
 fi
 

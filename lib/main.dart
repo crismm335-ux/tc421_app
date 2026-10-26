@@ -20,7 +20,7 @@ class Tc421App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aqua Light',
+      title: 'AQUA LIGHT',
       debugShowCheckedModeBanner: false,
       theme: aquaTheme,
       darkTheme: aquaTheme,
