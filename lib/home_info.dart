@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'animals_page.dart' show Animal, animalKinds, animalIcons, kindColors, kindPlural;
 import 'aqua.dart';
 import 'aquarium.dart';
+import 'doser_page.dart' show doserColors, fmtMl;
 import 'home_page.dart' show SectionLabel;
 import 'tests_page.dart' show TestEntry, testParams;
 
@@ -26,6 +27,7 @@ const List<InfoOption> infoOptions = [
   InfoOption('levels', 'Níveis de água', 'Equipamentos', Icons.water),
   InfoOption('outlets', 'Tomadas', 'Equipamentos', Icons.power_outlined),
   InfoOption('tpa', 'Troca de água (TPA)', 'Equipamentos', Icons.autorenew),
+  InfoOption('doser', 'Dosadora', 'Equipamentos', Icons.water_drop_outlined),
   InfoOption('t_kh', 'KH', 'Último teste', Icons.science_outlined),
   InfoOption('t_ca', 'Cálcio', 'Último teste', Icons.science_outlined),
   InfoOption('t_mg', 'Magnésio', 'Último teste', Icons.science_outlined),
@@ -46,7 +48,7 @@ class HomeAquariumInfo extends StatefulWidget {
   /// Cartão de conexão do ESP32, mostrado logo abaixo do título.
   final Widget? connection;
 
-  /// 4 equipamentos, 7 animais, 8 testes.
+  /// 4 equipamentos, 7 animais, 8 testes, 9 dosadora.
   final void Function(int code) onGo;
 
   @override
@@ -316,6 +318,57 @@ class _HomeAquariumInfoState extends State<HomeAquariumInfo> {
                       color: a.tpaState == 0 ? Aqua.text : Aqua.cyan),
                 ),
             ],
+          ));
+        case 'doser':
+          wide.add(_WidePanel(
+            icon: Icons.water_drop_outlined,
+            color: Aqua.cyan,
+            title: a.connected && a.doserRunning >= 0 && a.doserRunning < a.doser.length
+                ? 'Dosadora · dosando ${a.doser[a.doserRunning].name}'
+                : 'Dosadora · hoje',
+            onTap: () => widget.onGo(9),
+            children: !a.connected
+                ? [const _Offline()]
+                : (!a.hasDoser
+                    ? [
+                        const Text('Grave o programa novo no ESP32.',
+                            style: TextStyle(color: Aqua.muted))
+                      ]
+                    : [
+                        for (var c = 0; c < a.doser.length; c++)
+                          if (a.doser[c].enabled)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                        color: doserColors[c],
+                                        shape: BoxShape.circle),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(a.doser[c].name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: Aqua.text)),
+                                  ),
+                                  Text(
+                                      '${fmtMl(a.doser[c].today)} / ${fmtMl(a.doser[c].mlDay)} ml',
+                                      style: TextStyle(
+                                          color: a.doser[c].empty
+                                              ? Aqua.amber
+                                              : Aqua.green,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                        if (!a.doser.any((c) => c.enabled))
+                          const Text('Nenhum canal ligado.',
+                              style: TextStyle(color: Aqua.muted)),
+                      ]),
           ));
         case 'animals':
           {

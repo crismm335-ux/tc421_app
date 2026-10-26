@@ -50,7 +50,7 @@ Funciona por broadcast, sem precisar informar o IP. APK: `flutter build apk --re
 
 ## O que o app faz
 
-Visual do painel neon (Aqua Light). Abas de baixo: **Início, Luminária, Equipamentos, Animais e Testes**. Dentro de Luminária ficam Canais, Programação e Perfis.
+Visual do painel neon (Aqua Light). Abas de baixo: **Início, Luminária, Equipamentos, Dosadora, Animais e Testes**. Dentro de Luminária ficam Canais, Programação e Perfis.
 
 - **Início:** status da TC421, intensidade de agora, modos MASTER /
   Recife / Noturno, resumo do dia e "Seu aquário": o botão Personalizar escolhe o que aparece
@@ -63,7 +63,11 @@ Visual do painel neon (Aqua Light). Abas de baixo: **Início, Luminária, Equipa
   Tabela com os pontos de cada canal. Simulação do dia na luminária (15, 30 ou 60 s).
 - **Perfis:** Biblioteca (Recife Natural, Predominância Azul, Cores Vibrantes, Crescimento
   (LPS/SPS), Apenas Visual) e Meus Perfis (salvos no celular, mais exportar/importar JSON).
-- **Equipamentos, Animais e Testes:** cada um na sua aba.
+- **Equipamentos:** tomadas (bomba de circulação, skimmer, reposição/ATO, bomba de recalque, aquecedor,
+  resfriamento, luminária), sensores, calibração e a **TPA automática** (um botão retira os litros escolhidos do
+  sump e outra bomba repõe com água nova).
+- **Dosadora:** 4 canais com ml por dia, número de doses, horários, recipiente, dose avulsa e calibração.
+- **Animais e Testes:** cada um na sua aba.
 - A engrenagem no topo das telas abre a Conexão da luminária (IP, hora, nova busca).
 
 ## Pontos não confirmados em hardware

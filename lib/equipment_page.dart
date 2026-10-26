@@ -5,9 +5,12 @@ import 'aquarium.dart';
 
 /// Aba "Equipamentos": tomadas, sensores e reposição do aquário.
 class EquipmentPage extends StatelessWidget {
-  const EquipmentPage({super.key, required this.aquarium});
+  const EquipmentPage({super.key, required this.aquarium, this.onOpenDoser});
 
   final AquariumController aquarium;
+
+  /// Abre a aba Dosadora.
+  final VoidCallback? onOpenDoser;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +143,28 @@ class EquipmentPage extends StatelessWidget {
                     ),
                   ),
                 for (final o in a.outlets) _OutletTile(aquarium: a, outlet: o),
+                if (a.hasDoser)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: a.doserRunning >= 0 ? Aqua.cyan : const Color(0xFF2A4258),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    title: const Text('Dosadora (4 canais)',
+                        style: TextStyle(color: Aqua.text)),
+                    subtitle: Text(
+                      a.doserRunning >= 0
+                          ? 'Dosando ${a.doser[a.doserRunning].name}'
+                          : '${a.doser.where((c) => c.enabled).length} de 4 canais ligados',
+                      style: const TextStyle(color: Aqua.muted),
+                    ),
+                    trailing: const Icon(Icons.chevron_right, color: Aqua.muted),
+                    onTap: onOpenDoser,
+                  ),
               ],
             ),
           ),

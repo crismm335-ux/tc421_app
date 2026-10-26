@@ -38,12 +38,51 @@ class OutletState {
       case 7: // TPA: retirar
       case 8: // TPA: repor
         return [OutletMode.auto]; // só a rotina da TPA liga estas bombas
-      case 9: // dosadora
-        return [OutletMode.off, OutletMode.dose, OutletMode.on];
       default:
         return [OutletMode.off, OutletMode.on, OutletMode.schedule];
     }
   }
+}
+
+/// Um canal da dosadora (bomba peristáltica).
+class DoserChannel {
+  DoserChannel(Map<String, dynamic> j)
+      : name = j['name'] as String,
+        enabled = j['en'] as bool,
+        mlDay = (j['mlDay'] as num).toDouble(),
+        doses = j['doses'] as int,
+        start = j['start'] as int,
+        end = j['end'] as int,
+        rate = (j['rate'] as num).toDouble(),
+        capacity = (j['cap'] as num).toDouble(),
+        left = (j['left'] as num).toDouble(),
+        today = (j['today'] as num).toDouble(),
+        pending = (j['pending'] as num).toDouble(),
+        next = j['next'] as int,
+        empty = j['empty'] as bool;
+
+  final String name;
+  final bool enabled;
+  final double mlDay;
+  final int doses;
+  final int start;
+  final int end;
+
+  /// ml por minuto (calibração).
+  final double rate;
+  final double capacity;
+  final double left;
+  final double today;
+  final double pending;
+
+  /// Minuto do dia da próxima dose (-1 = nenhuma hoje).
+  final int next;
+  final bool empty;
+
+  double get perDose => doses == 0 ? 0 : mlDay / doses;
+
+  /// Quantos dias o recipiente ainda dura.
+  int? get daysLeft => mlDay <= 0 ? null : (left / mlDay).floor();
 }
 
 String modeName(int mode) => switch (mode) {
@@ -83,6 +122,16 @@ class AquariumController extends ChangeNotifier {
   double tpaLiters = 10, tpaDrainLpm = 5, tpaFillLpm = 5;
   bool tpaMinLevel = false;
   String tpaMsg = '';
+
+  // Dosadora (4 canais)
+  List<DoserChannel> doser = [];
+  int doserRunning = -1;
+  bool doserCalib = false;
+  int doserElapsed = 0, doserTotal = 0;
+  String doserMsg = '';
+
+  /// O programa do ESP32 já tem a dosadora de 4 canais?
+  bool get hasDoser => doser.isNotEmpty;
 
   Future<void> start() async {
     final prefs = await SharedPreferences.getInstance();
@@ -180,6 +229,20 @@ class AquariumController extends ChangeNotifier {
       final cal = j['cal'] as Map<String, dynamic>;
       phCal = cal['ph'] as bool;
       ecCal = cal['ec'] as bool;
+      final ds = j['doser'];
+      if (ds is Map<String, dynamic>) {
+        doserRunning = ds['running'] as int;
+        doserCalib = ds['calib'] as bool;
+        doserElapsed = (ds['elapsed'] as num).toInt();
+        doserTotal = (ds['total'] as num).toInt();
+        doserMsg = ds['msg'] as String;
+        doser = [
+          for (final c in ds['ch'] as List)
+            DoserChannel(c as Map<String, dynamic>)
+        ];
+      } else {
+        doser = [];
+      }
       connected = true;
       status = 'Conectada em $ip';
     } catch (_) {
@@ -227,6 +290,41 @@ class AquariumController extends ChangeNotifier {
         'drainLpm': '$drainLpm',
         'fillLpm': '$fillLpm',
       });
+
+  // ---- Dosadora ----
+
+  Future<void> setDoser(
+    int ch, {
+    String? name,
+    bool? enabled,
+    double? mlDay,
+    int? doses,
+    int? start,
+    int? end,
+    double? rate,
+    double? capacity,
+  }) =>
+      _send('/api/doser/set', {
+        'ch': '$ch',
+        if (name != null) 'name': name,
+        if (enabled != null) 'en': enabled ? '1' : '0',
+        if (mlDay != null) 'ml': mlDay.toStringAsFixed(1),
+        if (doses != null) 'n': '$doses',
+        if (start != null) 'start': '$start',
+        if (end != null) 'end': '$end',
+        if (rate != null) 'rate': rate.toStringAsFixed(1),
+        if (capacity != null) 'cap': capacity.toStringAsFixed(0),
+      });
+
+  Future<void> refillDoser(int ch) => _send('/api/doser/refill', {'ch': '$ch'});
+
+  Future<void> doseNow(int ch, double ml) =>
+      _send('/api/doser/dose', {'ch': '$ch', 'ml': ml.toStringAsFixed(1)});
+
+  /// Liga a bomba por 1 minuto para medir a vazão.
+  Future<void> calibrateDoser(int ch) => _send('/api/doser/calib', {'ch': '$ch'});
+
+  Future<void> stopDoser() => _send('/api/doser/stop', {});
 
   @override
   void dispose() {

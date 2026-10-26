@@ -543,16 +543,18 @@ class AquaBottomBar extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 4),
-                        Text(
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
                           items[i].label,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: items.length > 5 ? 10.5 : 11.5,
                             fontWeight:
                                 i == selected ? FontWeight.w600 : FontWeight.w500,
                             color: i == selected ? Aqua.cyan : Aqua.muted,
                           ),
+                        ),
                         ),
                       ],
                     ),

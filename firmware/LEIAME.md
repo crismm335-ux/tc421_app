@@ -1,15 +1,17 @@
 # Controladora de aquário (ESP32)
 
-Programa para o ESP32 que controla 10 tomadas, temperatura, pH, salinidade e a reposição de água (ATO). O app Aqua Light conversa com ele pela rede Wi-Fi.
+Programa para o ESP32 que controla 9 tomadas, temperatura, pH, salinidade, a reposição de água (ATO), a troca parcial de água (TPA) automática e uma dosadora de 4 canais. O app Aqua Light conversa com ele pela rede Wi-Fi.
 
 ## Lista de peças
 
 - ESP32 (placa de desenvolvimento, "ESP32 DevKit" de 30 ou 38 pinos)
-- Módulo de relés de 8 canais **e** mais 2 relés (ou um módulo de 16 canais), com optoacoplador, para as 10 tomadas
+- Módulo de relés de 8 canais **e** mais 1 relé (ou um módulo de 16 canais), com optoacoplador, para as 9 tomadas
 - Para a TPA: uma bomba que retira água do sump (bomba de esgoto) e outra que repõe a água pronta do reservatório
 - Sensor de temperatura DS18B20 à prova d'água + resistor de 4,7 kΩ
 - ADS1115 (conversor analógico, I2C) para pH e salinidade
 - Sonda de pH com placa de interface (por exemplo DFRobot Gravity pH) e sonda de condutividade/salinidade com placa de interface (por exemplo DFRobot Gravity EC). Compre as duas do tipo analógico, com saída de 0 a 3,3 V.
+- Dosadora: 4 bombas peristálticas de 12 V, um módulo MOSFET de 4 canais (entrada de 3,3 V, por exemplo com IRLZ44N ou AOD4184) e uma fonte de 12 V para as bombas
+- Resistor de 10 kΩ para a boia de nível mínimo do sump
 - Três boias de nível (contato seco): uma no sump (nível baixo, para a reposição), uma no galão de reposição e uma de **nível mínimo do sump** (para a TPA)
 - Fonte USB de 5 V para o ESP32
 - Caixa de acrílico, régua de tomadas com aterramento, fusível ou mini-disjuntor, borne/terminal para os sensores
@@ -18,14 +20,19 @@ Programa para o ESP32 que controla 10 tomadas, temperatura, pH, salinidade e a r
 
 | Função | Pino do ESP32 |
 |---|---|
-| Relés 1 a 10 (na ordem abaixo) | 16, 17, 18, 19, 23, 25, 26, 32, 33, 13 |
+| Relés 1 a 9 (na ordem abaixo) | 16, 17, 18, 19, 23, 25, 26, 32, 33 |
+| Dosadora canais 1 a 4 (entradas do módulo MOSFET) | 13, 15, 2, 5 |
 | Sensor DS18B20 (dado) | 4 (com 4,7 kΩ entre dado e 3,3 V) |
 | ADS1115 SDA / SCL | 21 / 22 |
 | Boia do sump | 27 e GND |
 | Boia do galão | 14 e GND |
-| Boia de nível mínimo do sump | 15 e GND |
+| Boia de nível mínimo do sump | 34 e GND, com 10 kΩ entre o 34 e o 3,3 V |
 
-Ordem das tomadas: 1 Bomba de circulação, 2 Skimmer, 3 Reposição (ATO), 4 Recalque, 5 Aquecedor, 6 Resfriamento, 7 Luminária, 8 TPA: retirar água do sump, 9 TPA: repor água pronta, 10 Dosadora.
+Ordem das tomadas: 1 Bomba de circulação, 2 Skimmer, 3 Reposição (ATO), 4 Bomba de recalque, 5 Aquecedor, 6 Resfriamento, 7 Luminária, 8 TPA: retirar água do sump, 9 TPA: repor água nova.
+
+**Mudou em relação à versão anterior:** a tomada 10 (Dosadora) saiu, porque a dosadora agora tem 4 bombas próprias. A boia de nível mínimo passou do pino 15 para o 34 (o 34 não tem resistor interno, por isso o resistor de 10 kΩ).
+
+Dosadora: ligue o GND do módulo MOSFET ao GND do ESP32, cada entrada do módulo aos pinos 13, 15, 2 e 5, e as bombas e a fonte de 12 V na saída do módulo. Os pinos 2, 5 e 15 podem dar um pulso de milissegundos quando o ESP32 liga; com módulo MOSFET isso não chega a dosar nada. Não use módulo de relé nesses pinos.
 
 ADS1115: canal A0 recebe a saída do pH, canal A1 recebe a saída da salinidade. Alimente o ADS1115 e as placas das sondas com 3,3 V do ESP32.
 
@@ -47,7 +54,7 @@ Boias: o programa considera "nível baixo no sump" quando a boia do sump fecha c
 
 ## Troca parcial de água (TPA)
 
-No app, a aba Aquário tem o painel **Troca parcial de água**: você informa quantos litros trocar e toca em **Iniciar TPA**. O ESP32 faz tudo sozinho:
+No app, a aba Equipamentos tem o painel **Troca parcial de água**: você informa quantos litros trocar e toca em **Iniciar TPA**. O ESP32 faz tudo sozinho:
 
 1. Liga a bomba de esgoto e retira a quantidade pedida do sump.
 2. Espera 3 segundos.
@@ -61,6 +68,25 @@ Como funciona e o que ele protege:
 - Dá para interromper a qualquer momento pelo app.
 - **Não há sensor no reservatório de água pronta.** Se ele tiver menos água do que a troca pede, a bomba roda a seco no final. Prepare água suficiente (com a mesma salinidade e temperatura do aquário) antes de iniciar e, se puder, coloque nele uma boia ligada à bomba por fora.
 - Regule o dreno com cuidado para não enviar a água retirada para um lugar onde ela possa transbordar.
+
+## Dosadora (4 canais)
+
+No app, a aba **Dosadora** mostra os 4 canais. Em cada um você escolhe:
+- o que ele doseia (por exemplo Alcalinidade, Cálcio, Magnésio, Elementos traço);
+- quantos ml por dia e em quantas doses (1 a 24), entre a primeira e a última hora, ou espalhadas no dia todo;
+- o tamanho do recipiente. O app desconta cada dose e avisa quando faltam menos de 3 dias. Ao encher o recipiente, toque em **Encher**.
+
+Também dá para fazer uma **dose avulsa** sem mudar a agenda.
+
+**Calibre cada canal antes de usar:** em Ajustar, coloque a mangueira num copo de medida, toque em **Ligar 1 minuto** e digite quantos ml saíram. A dose é feita por tempo, então sem calibração a quantidade sai errada. Recalibre de vez em quando, porque a mangueira das bombas peristálticas se desgasta.
+
+Como funciona e o que ele protege:
+- Uma bomba de cada vez, para não dosar cálcio e alcalinidade juntos no mesmo ponto.
+- Nenhuma dose durante a TPA; as doses da hora ficam na fila e saem quando a TPA termina.
+- Nenhuma dose passa de 5 minutos ligada.
+- Se o recipiente não tiver o suficiente, a dose é pulada e o app avisa.
+- Se o ESP32 ficar desligado na hora de uma dose, ela é pulada (não dobra depois).
+- A contagem de "hoje" volta a zero se o ESP32 reiniciar; o que tem no recipiente fica salvo.
 
 ## Gravar o programa
 
@@ -88,4 +114,5 @@ Como funciona e o que ele protege:
 
 - Não existe senha na API: qualquer aparelho na sua rede consegue ligar e desligar as tomadas. Use uma rede Wi-Fi com senha forte e não exponha o ESP32 à internet.
 - A programação por horário depende da hora da internet (NTP). Sem internet depois de ligar, os horários e a dosadora não disparam até a hora ser obtida.
+- O programa foi conferido quanto à escrita (compila), mas não com as bombas reais.
 - O programa não foi testado com os equipamentos reais. Teste tudo aos poucos, como descrito acima.

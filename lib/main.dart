@@ -4,6 +4,7 @@ import 'animals_page.dart';
 import 'aqua.dart';
 import 'aquarium.dart';
 import 'controller.dart';
+import 'doser_page.dart';
 import 'connection_panel.dart';
 import 'equipment_page.dart';
 import 'home_page.dart';
@@ -41,7 +42,7 @@ class _HomeShellState extends State<HomeShell> {
   final Tc421Controller controller = Tc421Controller();
   final AquariumController aquarium = AquariumController();
 
-  /// 0 Início, 1 Luminária, 2 Equipamentos, 3 Animais, 4 Testes.
+  /// 0 Início, 1 Luminária, 2 Equipamentos, 3 Dosadora, 4 Animais, 5 Testes.
   int tab = 0;
 
   /// Dentro de Luminária: 0 Canais, 1 Programação, 2 Perfis.
@@ -66,7 +67,7 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Códigos usados pelos botões das telas: 0 início, 1 canais,
   /// 2 programação, 3 perfis, 4 equipamentos do aquário, 5 conexão da
-  /// luminária, 7 animais, 8 testes.
+  /// luminária, 7 animais, 8 testes, 9 dosadora.
   void _go(int code) => setState(() {
         showConnection = false;
         switch (code) {
@@ -80,9 +81,11 @@ class _HomeShellState extends State<HomeShell> {
           case 5:
             showConnection = true;
           case 7:
-            tab = 3;
-          case 8:
             tab = 4;
+          case 8:
+            tab = 5;
+          case 9:
+            tab = 3;
           default:
             tab = 0;
         }
@@ -136,7 +139,7 @@ class _HomeShellState extends State<HomeShell> {
         : switch (tab) {
             0 => Listenable.merge([controller, aquarium]),
             1 => controller,
-            2 => aquarium,
+            2 || 3 => aquarium,
             _ => controller,
           };
     return ListenableBuilder(
@@ -156,8 +159,10 @@ class _HomeShellState extends State<HomeShell> {
                 0 => HomePage(
                     controller: controller, aquarium: aquarium, onGo: _go),
                 1 => _luminaria(),
-                2 => _titled('Equipamentos', EquipmentPage(aquarium: aquarium)),
-                3 => _titled('Animais', const AnimalsPage()),
+                2 => _titled('Equipamentos',
+                    EquipmentPage(aquarium: aquarium, onOpenDoser: () => _go(9))),
+                3 => _titled('Dosadora', DoserPage(aquarium: aquarium, onGo: _go)),
+                4 => _titled('Animais', const AnimalsPage()),
                 _ => _titled('Testes da água', const TestsPage()),
               };
         return Scaffold(
@@ -178,6 +183,7 @@ class _HomeShellState extends State<HomeShell> {
               AquaNavItem(Icons.home_outlined, 'Início'),
               AquaNavItem(Icons.lightbulb_outline, 'Luminária'),
               AquaNavItem(Icons.power_outlined, 'Equipamentos'),
+              AquaNavItem(Icons.water_drop_outlined, 'Dosadora'),
               AquaNavItem(Icons.set_meal_outlined, 'Animais'),
               AquaNavItem(Icons.science_outlined, 'Testes'),
             ],

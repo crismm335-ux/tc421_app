@@ -1,8 +1,9 @@
 /*
  * Controladora de aquário marinho - ESP32
  *
- * 10 tomadas (relés), temperatura (DS18B20), pH e salinidade (via ADS1115),
- * reposição automática (ATO) com 2 boias, e uma API HTTP simples na rede local.
+ * 9 tomadas (relés), temperatura (DS18B20), pH e salinidade (via ADS1115),
+ * reposição automática (ATO) com 2 boias, TPA automática, dosadora de 4 canais
+ * e uma API HTTP simples na rede local.
  * O app Aqua Light conversa com esta API.
  *
  * Bibliotecas (Gerenciador de Bibliotecas do Arduino IDE):
@@ -29,24 +30,33 @@ const char* WIFI_SSID = "SUA_REDE";
 const char* WIFI_PASS = "SUA_SENHA";
 const bool RELAY_ACTIVE_LOW = true;       // a maioria dos módulos de relé liga com nível baixo
 const char* TIMEZONE = "<-03>3";          // Brasília
+const bool DOSER_ACTIVE_HIGH = true;      // módulo MOSFET das bombas dosadoras liga com nível alto
 // =============================
 
 enum Mode : uint8_t { M_OFF = 0, M_ON = 1, M_SCHEDULE = 2, M_AUTO = 3, M_DOSE = 4 };
-enum OutletId { O_CIRC, O_SKIMMER, O_ATO, O_RECALQUE, O_HEATER, O_CHILLER, O_LIGHT, O_TPA_DRAIN, O_TPA_FILL, O_DOSER, NUM_OUTLETS };
+enum OutletId { O_CIRC, O_SKIMMER, O_ATO, O_RECALQUE, O_HEATER, O_CHILLER, O_LIGHT, O_TPA_DRAIN, O_TPA_FILL, NUM_OUTLETS };
 
 const char* OUTLET_NAME[NUM_OUTLETS] = {
-  "Bomba de circulação", "Skimmer", "Reposição (ATO)", "Recalque", "Aquecedor",
-  "Resfriamento", "Luminária", "TPA: retirar água do sump", "TPA: repor água pronta", "Dosadora"
+  "Bomba de circulação", "Skimmer", "Reposição (ATO)", "Bomba de recalque", "Aquecedor",
+  "Resfriamento", "Luminária", "TPA: retirar água do sump", "TPA: repor água nova"
 };
 // GPIOs seguros do ESP32 (evitam os pinos de boot). 21/22 ficam para o I2C do ADS1115.
-const int OUTLET_PIN[NUM_OUTLETS] = {16, 17, 18, 19, 23, 25, 26, 32, 33, 13};
+const int OUTLET_PIN[NUM_OUTLETS] = {16, 17, 18, 19, 23, 25, 26, 32, 33};
 // Modo de partida de cada tomada (só vale na primeira vez; depois vale o que o app salvar).
-const Mode OUTLET_DEFAULT[NUM_OUTLETS] = {M_ON, M_ON, M_AUTO, M_ON, M_AUTO, M_AUTO, M_ON, M_AUTO, M_AUTO, M_OFF};
+const Mode OUTLET_DEFAULT[NUM_OUTLETS] = {M_ON, M_ON, M_AUTO, M_ON, M_AUTO, M_AUTO, M_ON, M_AUTO, M_AUTO};
+
+// Dosadora: 4 bombas peristálticas (12 V) ligadas por um módulo MOSFET de 4 canais.
+const int DOSE_CH = 4;
+const int DOSE_PIN[DOSE_CH] = {13, 15, 2, 5};
+const char* DOSE_DEFAULT_NAME[DOSE_CH] = {"Alcalinidade (KH)", "Cálcio", "Magnésio", "Elementos traço"};
+const unsigned long DOSE_MAX_MS = 300000UL;              // nenhuma dose passa de 5 minutos
+const unsigned long DOSE_CALIB_MS = 60000UL;             // calibração: 1 minuto ligada
 
 const int PIN_DS18B20 = 4;
 const int PIN_FLOAT_SUMP = 27;       // boia do sump: fechada ao GND = nível baixo (precisa repor)
 const int PIN_FLOAT_RESERVOIR = 14;  // boia do galão: fechada ao GND = galão vazio
-const int PIN_FLOAT_SUMP_MIN = 15;   // boia de nível MÍNIMO do sump: fechada ao GND = não retirar mais água
+const int PIN_FLOAT_SUMP_MIN = 34;   // boia de nível MÍNIMO do sump: fechada ao GND = não retirar mais água
+                                     // (o pino 34 não tem resistor interno: use 10 kΩ entre o 34 e o 3,3 V)
 const int PIN_SDA = 21, PIN_SCL = 22;
 
 struct OutletCfg { uint8_t mode; uint16_t onMin; uint16_t offMin; uint16_t doseSec; };
@@ -86,14 +96,39 @@ Adafruit_ADS1115 ads;
 
 bool heaterState = false, chillerState = false;
 unsigned long tempRequested = 0, lastSensors = 0, lastLogic = 0;
-int lastDoseDay = -1;
-unsigned long doseStart = 0;
-bool dosing = false;
+
+// ---------- dosadora ----------
+struct DoseCfg {
+  String name;
+  bool en;
+  float mlDay;        // ml por dia
+  uint8_t doses;      // doses por dia (1 a 24)
+  uint16_t startMin;  // primeira dose (minuto do dia)
+  uint16_t endMin;    // última dose; igual ao início = espalhar no dia todo
+  float rate;         // ml por minuto (calibração)
+  float capMl;        // tamanho do recipiente
+  float leftMl;       // quanto ainda tem no recipiente
+};
+DoseCfg dose[DOSE_CH];
+float doseToday[DOSE_CH];        // ml dosados hoje
+float dosePending[DOSE_CH];      // ml esperando na fila
+uint32_t doseDoneMask[DOSE_CH];  // doses do dia já feitas (1 bit por dose)
+bool doseEmpty[DOSE_CH];         // dose pulada por falta de líquido
+int doseDay = -1;
+int doseRunning = -1;            // canal ligado agora (-1 = nenhum)
+bool doseCalib = false;          // a dose atual é calibração (não conta no recipiente)
+unsigned long doseStartMs = 0, doseRunMs = 0;
+float doseRunMl = 0;
+String doseMsg = "";
 
 // ---------- utilidades ----------
 void writeRelay(int i, bool on) {
   outletOn[i] = on;
   digitalWrite(OUTLET_PIN[i], (on ^ RELAY_ACTIVE_LOW) ? HIGH : LOW);
+}
+
+void writeDoser(int c, bool on) {
+  digitalWrite(DOSE_PIN[c], (on == DOSER_ACTIVE_HIGH) ? HIGH : LOW);
 }
 
 String jf(float v, int d = 2) { return isnan(v) ? String("null") : String(v, d); }
@@ -129,6 +164,32 @@ void loadConfig() {
   phV4 = prefs.getFloat("phv4", 0);
   ecCal = prefs.getBool("eccal", false);
   ecK = prefs.getFloat("eck", 0);
+  for (int c = 0; c < DOSE_CH; c++) {
+    String k = "d" + String(c);
+    dose[c].name = prefs.getString((k + "n").c_str(), DOSE_DEFAULT_NAME[c]);
+    dose[c].en = prefs.getBool((k + "e").c_str(), false);
+    dose[c].mlDay = prefs.getFloat((k + "m").c_str(), 10);
+    dose[c].doses = prefs.getUChar((k + "k").c_str(), 4);
+    dose[c].startMin = prefs.getUShort((k + "s").c_str(), 8 * 60);
+    dose[c].endMin = prefs.getUShort((k + "f").c_str(), 20 * 60);
+    dose[c].rate = prefs.getFloat((k + "r").c_str(), 60);
+    dose[c].capMl = prefs.getFloat((k + "c").c_str(), 1000);
+    dose[c].leftMl = prefs.getFloat((k + "l").c_str(), dose[c].capMl);
+    doseToday[c] = 0; dosePending[c] = 0; doseDoneMask[c] = 0; doseEmpty[c] = false;
+  }
+}
+
+void saveDose(int c) {
+  String k = "d" + String(c);
+  prefs.putString((k + "n").c_str(), dose[c].name);
+  prefs.putBool((k + "e").c_str(), dose[c].en);
+  prefs.putFloat((k + "m").c_str(), dose[c].mlDay);
+  prefs.putUChar((k + "k").c_str(), dose[c].doses);
+  prefs.putUShort((k + "s").c_str(), dose[c].startMin);
+  prefs.putUShort((k + "f").c_str(), dose[c].endMin);
+  prefs.putFloat((k + "r").c_str(), dose[c].rate);
+  prefs.putFloat((k + "c").c_str(), dose[c].capMl);
+  prefs.putFloat((k + "l").c_str(), dose[c].leftMl);
 }
 
 void saveOutlet(int i) {
@@ -242,20 +303,87 @@ bool scheduleWanted(int i) {
   return a < b ? (m >= a && m < b) : (m >= a || m < b);
 }
 
-bool doseWanted(int i) {
+// ---------- dosadora: agenda e fila ----------
+// Minuto do dia da dose k (0..doses-1) do canal c.
+int doseSlot(int c, int k) {
+  int n = max(1, (int)dose[c].doses);
+  int a = dose[c].startMin, b = dose[c].endMin;
+  if (a == b) return (a + k * 1440 / n) % 1440;           // espalha nas 24 h
+  int span = (b - a + 1440) % 1440;
+  if (n == 1) return a;
+  return (a + (int)((long)k * span / (n - 1))) % 1440;     // da primeira à última
+}
+
+// Próxima dose de hoje que ainda não aconteceu (-1 = nenhuma).
+int doseNext(int c, int m) {
+  if (!dose[c].en) return -1;
+  int best = -1;
+  for (int k = 0; k < dose[c].doses; k++) {
+    if (doseDoneMask[c] & (1UL << k)) continue;
+    int t = doseSlot(c, k);
+    if (t >= m && (best < 0 || t < best)) best = t;
+  }
+  return best;
+}
+
+void doseStop(bool count) {
+  if (doseRunning < 0) return;
+  int c = doseRunning;
+  writeDoser(c, false);
+  if (!doseCalib && count) {
+    unsigned long el = millis() - doseStartMs;
+    float done = el >= doseRunMs ? doseRunMl : doseRunMl * el / (float)doseRunMs;
+    doseToday[c] += done;
+    dose[c].leftMl = max(0.0f, dose[c].leftMl - done);
+    prefs.putFloat(("d" + String(c) + "l").c_str(), dose[c].leftMl);
+  }
+  doseRunning = -1; doseCalib = false;
+}
+
+void doseTick() {
   int m, d;
-  if (dosing) {
-    if (millis() - doseStart >= (unsigned long)cfg[i].doseSec * 1000UL) dosing = false;
-    return dosing;
+  if (nowMinute(m, d)) {
+    if (d != doseDay) {                          // virou o dia
+      doseDay = d;
+      for (int c = 0; c < DOSE_CH; c++) { doseToday[c] = 0; doseDoneMask[c] = 0; }
+    }
+    for (int c = 0; c < DOSE_CH; c++) {
+      if (!dose[c].en || dose[c].mlDay <= 0) continue;
+      for (int k = 0; k < dose[c].doses; k++) {
+        if (doseDoneMask[c] & (1UL << k)) continue;
+        int t = doseSlot(c, k);
+        if (m < t) continue;                     // ainda não chegou a hora
+        doseDoneMask[c] |= (1UL << k);
+        // Só doseia se estiver na hora (5 min de tolerância). Se passou disso
+        // (ex.: ESP32 ligado mais tarde), a dose é pulada para não dobrar.
+        if (m - t < 5) dosePending[c] += dose[c].mlDay / dose[c].doses;
+      }
+    }
   }
-  if (nowMinute(m, d) && m == cfg[i].onMin && d != lastDoseDay) {
-    lastDoseDay = d; dosing = true; doseStart = millis(); return true;
+  // Uma bomba por vez, e nunca durante a TPA.
+  if (doseRunning >= 0) {
+    if (millis() - doseStartMs >= doseRunMs) doseStop(true);
+    return;
   }
-  return false;
+  if (tpaActive()) return;
+  for (int c = 0; c < DOSE_CH; c++) {
+    if (dosePending[c] < 0.05f) continue;
+    float ml = dosePending[c];
+    dosePending[c] = 0;
+    if (dose[c].rate <= 0) { doseMsg = "Calibre o canal " + String(c + 1); continue; }
+    if (dose[c].leftMl < ml) { doseEmpty[c] = true; doseMsg = "Recipiente de " + dose[c].name + " vazio: dose pulada"; continue; }
+    doseEmpty[c] = false;
+    doseRunMl = ml;
+    doseRunMs = min(DOSE_MAX_MS, (unsigned long)(ml / dose[c].rate * 60000.0f));
+    doseRunning = c; doseCalib = false; doseStartMs = millis();
+    writeDoser(c, true);
+    return;
+  }
 }
 
 void runLogic() {
   tpaTick();
+  doseTick();
   // Termostato com histerese
   if (!isnan(temperature)) {
     if (temperature < heaterOn) heaterState = true;
@@ -276,7 +404,7 @@ void runLogic() {
       case M_ON: want = true; break;
       case M_OFF: want = false; break;
       case M_SCHEDULE: want = scheduleWanted(i); break;
-      case M_DOSE: want = doseWanted(i); break;
+      case M_DOSE: want = false; break;   // modo antigo: a dosadora agora tem a própria aba
       case M_AUTO:
         if (i == O_HEATER) want = heaterState;
         else if (i == O_CHILLER) want = chillerState;
@@ -309,6 +437,13 @@ String alarmsJson() {
   else if (temperature < alarmLo) add("Temperatura abaixo do limite");
   if (atoFault) add("Reposição travada: bomba rodou tempo demais");
   if (reservoirEmpty()) add("Galão de reposição vazio");
+  for (int c = 0; c < DOSE_CH; c++) {
+    if (!dose[c].en) continue;
+    String t = "";
+    if (doseEmpty[c]) t = "Dosadora: recipiente de " + dose[c].name + " vazio";
+    else if (dose[c].mlDay > 0 && dose[c].leftMl < dose[c].mlDay * 3) t = "Dosadora: " + dose[c].name + " acaba em menos de 3 dias";
+    if (t.length()) add(t.c_str());
+  }
   s += "]";
   return s;
 }
@@ -335,20 +470,39 @@ void sendStatus() {
        ",\"minLevel\":" + String(sumpMin() ? "true" : "false") + ",\"msg\":\"" + tpaMsg + "\"}";
   j += ",\"thermo\":{\"heaterOn\":" + jf(heaterOn) + ",\"heaterOff\":" + jf(heaterOff) + ",\"chillerOn\":" + jf(chillerOn) +
        ",\"chillerOff\":" + jf(chillerOff) + ",\"alarmLo\":" + jf(alarmLo) + ",\"alarmHi\":" + jf(alarmHi) + "}";
-  j += ",\"cal\":{\"ph\":" + String(phCal ? "true" : "false") + ",\"ec\":" + String(ecCal ? "true" : "false") + "}}";
+  j += ",\"cal\":{\"ph\":" + String(phCal ? "true" : "false") + ",\"ec\":" + String(ecCal ? "true" : "false") + "}";
+  j += ",\"doser\":" + doserJson(m, timeOk) + "}";
   server.send(200, "application/json", j);
+}
+
+String jsonText(String t) { t.replace("\\", "/"); t.replace("\"", "'"); return "\"" + t + "\""; }
+
+String doserJson(int m, bool timeOk) {
+  String j = "{\"running\":" + String(doseRunning) + ",\"calib\":" + String(doseCalib ? "true" : "false") +
+             ",\"elapsed\":" + String(doseRunning >= 0 ? (millis() - doseStartMs) / 1000 : 0) +
+             ",\"total\":" + String(doseRunning >= 0 ? doseRunMs / 1000 : 0) +
+             ",\"msg\":" + jsonText(doseMsg) + ",\"ch\":[";
+  for (int c = 0; c < DOSE_CH; c++) {
+    if (c) j += ",";
+    j += "{\"name\":" + jsonText(dose[c].name) + ",\"en\":" + String(dose[c].en ? "true" : "false") +
+         ",\"mlDay\":" + jf(dose[c].mlDay, 1) + ",\"doses\":" + String(dose[c].doses) +
+         ",\"start\":" + String(dose[c].startMin) + ",\"end\":" + String(dose[c].endMin) +
+         ",\"rate\":" + jf(dose[c].rate, 1) + ",\"cap\":" + jf(dose[c].capMl, 0) + ",\"left\":" + jf(dose[c].leftMl, 1) +
+         ",\"today\":" + jf(doseToday[c], 1) + ",\"pending\":" + jf(dosePending[c], 1) +
+         ",\"next\":" + String(timeOk ? doseNext(c, m) : -1) + ",\"empty\":" + String(doseEmpty[c] ? "true" : "false") + "}";
+  }
+  return j + "]}";
 }
 
 void handleSet() {
   if (!server.hasArg("id")) { server.send(400, "text/plain", "id?"); return; }
   int i = server.arg("id").toInt();
   if (i < 0 || i >= NUM_OUTLETS) { server.send(400, "text/plain", "id invalido"); return; }
-  if (server.hasArg("mode")) { int m = server.arg("mode").toInt(); if (m >= 0 && m <= 4) cfg[i].mode = m; }
+  if (server.hasArg("mode")) { int m = server.arg("mode").toInt(); if (m >= 0 && m <= 3) cfg[i].mode = m; }
   if (server.hasArg("on")) cfg[i].onMin = constrain(server.arg("on").toInt(), 0, 1439);
   if (server.hasArg("off")) cfg[i].offMin = constrain(server.arg("off").toInt(), 0, 1439);
   if (server.hasArg("sec")) cfg[i].doseSec = constrain(server.arg("sec").toInt(), 1, 600);
   saveOutlet(i);
-  if (i == O_DOSER) { lastDoseDay = -1; dosing = false; }
   runLogic();
   sendStatus();
 }
@@ -398,6 +552,68 @@ void handleTpaConfig() {
 
 void handleAtoReset() { atoFault = false; atoLastStop = millis(); sendStatus(); }
 
+// ---------- API da dosadora ----------
+int doseArgCh() {
+  int c = server.hasArg("ch") ? server.arg("ch").toInt() : -1;
+  return (c >= 0 && c < DOSE_CH) ? c : -1;
+}
+
+// /api/doser/set?ch=0&name=Cálcio&en=1&ml=10&n=4&start=480&end=1200&rate=60&cap=1000
+void handleDoserSet() {
+  int c = doseArgCh();
+  if (c < 0) { server.send(400, "text/plain", "ch invalido"); return; }
+  if (server.hasArg("name")) { String n = server.arg("name"); n.trim(); if (n.length() > 0) dose[c].name = n.substring(0, 24); }
+  if (server.hasArg("en")) dose[c].en = server.arg("en") == "1";
+  if (server.hasArg("ml")) dose[c].mlDay = constrain(server.arg("ml").toFloat(), 0.0f, 500.0f);
+  if (server.hasArg("n")) dose[c].doses = constrain(server.arg("n").toInt(), 1, 24);
+  if (server.hasArg("start")) dose[c].startMin = constrain(server.arg("start").toInt(), 0, 1439);
+  if (server.hasArg("end")) dose[c].endMin = constrain(server.arg("end").toInt(), 0, 1439);
+  if (server.hasArg("rate")) dose[c].rate = constrain(server.arg("rate").toFloat(), 1.0f, 1000.0f);
+  if (server.hasArg("cap")) {
+    dose[c].capMl = constrain(server.arg("cap").toFloat(), 10.0f, 20000.0f);
+    if (dose[c].leftMl > dose[c].capMl) dose[c].leftMl = dose[c].capMl;
+  }
+  // Doses de hoje que já passaram não são repetidas com a agenda nova.
+  int m, d;
+  doseDoneMask[c] = 0;
+  if (nowMinute(m, d)) for (int k = 0; k < dose[c].doses; k++) if (doseSlot(c, k) < m) doseDoneMask[c] |= (1UL << k);
+  doseEmpty[c] = false;
+  saveDose(c);
+  sendStatus();
+}
+
+// Recipiente cheio de novo
+void handleDoserRefill() {
+  int c = doseArgCh();
+  if (c >= 0) { dose[c].leftMl = dose[c].capMl; doseEmpty[c] = false; saveDose(c); }
+  sendStatus();
+}
+
+// Dose avulsa: /api/doser/dose?ch=1&ml=2.5
+void handleDoserDose() {
+  int c = doseArgCh();
+  float ml = server.arg("ml").toFloat();
+  if (c >= 0 && ml > 0 && ml <= 100) { dosePending[c] += ml; doseMsg = ""; }
+  sendStatus();
+}
+
+// Calibração: liga a bomba por 1 minuto; o app pede quanto saiu no copo e envia rate=ml.
+void handleDoserCalib() {
+  int c = doseArgCh();
+  if (c >= 0 && doseRunning < 0 && !tpaActive()) {
+    doseRunning = c; doseCalib = true; doseRunMs = DOSE_CALIB_MS; doseRunMl = 0; doseStartMs = millis();
+    writeDoser(c, true);
+  }
+  sendStatus();
+}
+
+void handleDoserStop() {
+  doseStop(true);
+  for (int c = 0; c < DOSE_CH; c++) dosePending[c] = 0;
+  doseMsg = "Dosagem interrompida";
+  sendStatus();
+}
+
 // ---------- setup / loop ----------
 void connectWifi() {
   WiFi.mode(WIFI_STA);
@@ -409,10 +625,11 @@ void connectWifi() {
 
 void setup() {
   // Primeiro de tudo: todas as tomadas desligadas.
+  for (int c = 0; c < DOSE_CH; c++) { pinMode(DOSE_PIN[c], OUTPUT); writeDoser(c, false); }
   for (int i = 0; i < NUM_OUTLETS; i++) { pinMode(OUTLET_PIN[i], OUTPUT); writeRelay(i, false); }
   pinMode(PIN_FLOAT_SUMP, INPUT_PULLUP);
   pinMode(PIN_FLOAT_RESERVOIR, INPUT_PULLUP);
-  pinMode(PIN_FLOAT_SUMP_MIN, INPUT_PULLUP);
+  pinMode(PIN_FLOAT_SUMP_MIN, INPUT);   // pino 34: resistor de 10 kΩ externo para o 3,3 V
   Serial.begin(115200);
   loadConfig();
 
@@ -437,6 +654,11 @@ void setup() {
   server.on("/api/tpa/start", handleTpaStart);
   server.on("/api/tpa/stop", handleTpaStop);
   server.on("/api/tpa/config", handleTpaConfig);
+  server.on("/api/doser/set", handleDoserSet);
+  server.on("/api/doser/refill", handleDoserRefill);
+  server.on("/api/doser/dose", handleDoserDose);
+  server.on("/api/doser/calib", handleDoserCalib);
+  server.on("/api/doser/stop", handleDoserStop);
   server.begin();
   Serial.print("Pronto. IP: ");
   Serial.println(WiFi.localIP());
