@@ -93,7 +93,7 @@ class AquariumController extends ChangeNotifier {
       return;
     }
     await refresh();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => refresh());
   }
 
   Future<void> setIp(String value) async {
@@ -134,7 +134,13 @@ class AquariumController extends ChangeNotifier {
     _apply(j);
   }
 
+  /// Última resposta recebida; se a nova for igual, as telas não redesenham.
+  String? _lastSignature;
+
   void _apply(Map<String, dynamic>? j) {
+    final signature = j == null ? 'offline' : jsonEncode(j);
+    if (signature == _lastSignature) return;
+    _lastSignature = signature;
     if (j == null) {
       connected = false;
       status = 'Sem resposta de $ip. Confira se o ESP32 está ligado e na mesma rede.';

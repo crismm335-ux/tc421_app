@@ -201,7 +201,9 @@ class HomePage extends StatelessWidget {
                   children: [
                     SizedBox(
                       height: 220,
-                      child: CustomPaint(
+                      // O anel só é redesenhado quando a intensidade muda.
+                      child: RepaintBoundary(
+                        child: CustomPaint(
                         painter: _GaugePainter(c.currentIntensity / 100),
                         child: Center(
                           child: Column(
@@ -232,6 +234,7 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ),
                     ),
                     const SizedBox(height: 6),
                     Row(
@@ -541,12 +544,7 @@ class _DayBarPainter extends CustomPainter {
     _icon(canvas, Icons.brightness_3, Offset(xs.last + 26, cy), const Color(0xFFDDE6FF));
     for (var i = 0; i < 4; i++) {
       final o = Offset(xs[i], cy);
-      canvas.drawCircle(
-          o,
-          9,
-          Paint()
-            ..color = fade(_dots[i], 0.6)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+      canvas.drawCircle(o, 10, Paint()..color = fade(_dots[i], 0.3));
       canvas.drawCircle(o, 7, Paint()..color = _dots[i]);
       canvas.drawCircle(
           o,
@@ -574,7 +572,10 @@ class _DayBarPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DayBarPainter old) => true;
+  bool shouldRepaint(covariant _DayBarPainter old) =>
+      old.moments.length != moments.length ||
+      [for (var i = 0; i < moments.length; i++) old.moments[i] != moments[i]]
+          .any((x) => x);
 }
 
 /// Arco de intensidade (270°) com brilho.

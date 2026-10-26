@@ -129,8 +129,18 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Cada tela só redesenha com o que ela usa: a Luminária não muda
+    // quando o ESP32 manda leitura nova, e vice-versa.
+    final Listenable listenable = showConnection
+        ? controller
+        : switch (tab) {
+            0 => Listenable.merge([controller, aquarium]),
+            1 => controller,
+            2 => aquarium,
+            _ => controller,
+          };
     return ListenableBuilder(
-      listenable: Listenable.merge([controller, aquarium]),
+      listenable: listenable,
       builder: (context, _) {
         // Só a tela aberta é montada.
         final Widget page = showConnection

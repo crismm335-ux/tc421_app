@@ -301,8 +301,7 @@ class _CurvePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = isSel ? 7 : 5
           ..strokeJoin = StrokeJoin.round
-          ..color = color.withAlpha(isSel ? 110 : 60)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+          ..color = color.withAlpha(isSel ? 60 : 30),
       );
       canvas.drawPath(
         line,
@@ -322,8 +321,7 @@ class _CurvePainter extends CustomPainter {
               o,
               r + 4,
               Paint()
-                ..color = color.withAlpha(120)
-                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+                ..color = color.withAlpha(70));
         }
         canvas.drawCircle(o, r, Paint()..color = active ? Colors.white : color);
         canvas.drawCircle(

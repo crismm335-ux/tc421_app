@@ -514,5 +514,10 @@ class SpectrumPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant SpectrumPainter old) => true;
+  bool shouldRepaint(covariant SpectrumPainter old) {
+    for (var i = 0; i < values.length; i++) {
+      if (old.values[i] != values[i]) return true;
+    }
+    return false;
+  }
 }

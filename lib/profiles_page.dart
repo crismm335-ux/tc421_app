@@ -412,8 +412,7 @@ class _MiniCurves extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 4
           ..strokeJoin = StrokeJoin.round
-          ..color = channelColors[i].withAlpha(70)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+          ..color = channelColors[i].withAlpha(40),
       );
       canvas.drawPath(
         path,

@@ -483,12 +483,8 @@ class _SliderPainter extends CustomPainter {
               .createShader(Rect.fromLTRB(left, cy - 4, x, cy + 4)),
       );
     }
-    canvas.drawCircle(
-        Offset(x, cy),
-        r + 3,
-        Paint()
-          ..color = fade(color, 0.45)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+    canvas.drawCircle(Offset(x, cy), r + 4, Paint()..color = fade(color, 0.22));
+    canvas.drawCircle(Offset(x, cy), r + 2, Paint()..color = fade(color, 0.35));
     canvas.drawCircle(Offset(x, cy), r, Paint()..color = Colors.white);
   }
 
