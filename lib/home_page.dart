@@ -72,10 +72,10 @@ class HomePage extends StatelessWidget {
                     children: [
                       Text(
                           c.connected
-                              ? 'TC421 Conectada'
+                              ? 'Luminária conectada'
                               : (c.searching
                                   ? 'Procurando...'
-                                  : 'TC421 sem conexão'),
+                                  : 'Luminária sem conexão'),
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, color: Aqua.text)),
                       Text(
@@ -180,6 +180,44 @@ class HomePage extends StatelessWidget {
 
         // Resumo do dia
         _DaySummary(controller: c, onTap: () => onGo(2)),
+
+        // Conexão do aquário (ESP32)
+        AquaPanel(
+          padding: const EdgeInsets.all(14),
+          child: InkWell(
+            onTap: () => onGo(4),
+            child: Row(
+              children: [
+                Icon(a.connected ? Icons.water : Icons.water_outlined,
+                    color: a.connected ? Aqua.cyan : Aqua.muted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          a.connected
+                              ? 'Aquário conectado'
+                              : 'Aquário sem conexão',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, color: Aqua.text)),
+                      Text(
+                          a.connected
+                              ? '● ESP32${a.ip.isEmpty ? '' : ' · ${a.ip}'}'
+                              : 'Toque para conectar o ESP32',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: a.connected
+                                  ? const Color(0xFF47E08A)
+                                  : Aqua.muted)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Aqua.muted),
+              ],
+            ),
+          ),
+        ),
 
         // Aquário
         if (a.connected && a.alarms.isNotEmpty)
