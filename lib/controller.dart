@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'curve.dart';
+import 'net_lock.dart';
 import 'tc421_client.dart';
 import 'tc421_protocol.dart';
 
@@ -18,6 +20,18 @@ class Tc421Controller extends ChangeNotifier {
   String status = 'Procurando a controladora...';
   bool searching = false;
   bool get connected => _client.mac != null;
+
+  /// Mensagem da versão web quando a luminária não responde.
+  static const remoteHint =
+      'Na versão web a luminária é controlada pela internet, através do ESP32. Configure o Acesso pela internet aqui embaixo.';
+
+  /// Falando com a luminária pela internet (através do ESP32)?
+  bool get viaInternet => _client.viaRelay;
+
+  /// Liga a ponte pela internet (ou desliga, com null).
+  void setRelay(Future<Uint8List?> Function(Uint8List packet, int waitMs)? f) {
+    _client.relay = f;
+  }
   String? get mac => _client.mac;
 
   // Controle ao vivo
@@ -191,12 +205,17 @@ class Tc421Controller extends ChangeNotifier {
         : 'Conectando em $manualIp...';
     notifyListeners();
     try {
+      await acquireBroadcastLock();
       _client.setTarget(manualIp);
       final mac = await _client.discover();
       if (mac != null) {
-        status = 'Conectado: $mac';
+        status = _client.viaRelay
+            ? 'Conectado pela internet: $mac'
+            : 'Conectado: $mac';
       } else if (manualIp != null) {
         status = 'Sem resposta de $manualIp. Confira o IP e se o celular está no mesmo WiFi.';
+      } else if (kIsWeb) {
+        status = remoteHint;
       } else if (Platform.isIOS) {
         status = 'Não achei por broadcast (o iPhone limita isso). Toque no ícone de rede e informe o IP da controladora.';
       } else {

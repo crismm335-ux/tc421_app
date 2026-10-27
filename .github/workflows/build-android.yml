@@ -29,7 +29,9 @@ jobs:
           # O app precisa de rede; a permissão vem só na versão de depuração por padrão.
           # Nome que aparece embaixo do ícone no celular.
           sed -i 's|android:label="[^"]*"|android:label="AQUA LIGHT"|' android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"|' android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>\n    <application android:usesCleartextTraffic="true"|' android/app/src/main/AndroidManifest.xml
+          # Código nativo que deixa o app receber o broadcast da TC421 no Wi-Fi.
+          cp android_extra/MainActivity.kt android/app/src/main/kotlin/br/fisionit/tc421_app/MainActivity.kt
 
       - name: Baixar dependências
         run: flutter pub get

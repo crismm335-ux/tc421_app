@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'remote.dart';
+
 /// Modos de cada tomada (iguais aos do programa do ESP32).
 class OutletMode {
   static const off = 0, on = 1, schedule = 2, auto = 3, dose = 4;
@@ -133,14 +135,28 @@ class AquariumController extends ChangeNotifier {
   /// O programa do ESP32 já tem a dosadora de 4 canais?
   bool get hasDoser => doser.isNotEmpty;
 
+  /// Acesso pela internet (fora de casa).
+  RemoteLink? remote;
+  StreamSubscription? _remoteSub;
+
+  /// Os dados de agora vieram pela internet (o ESP32 não respondeu na rede local).
+  bool viaInternet = false;
+
+  void attachRemote(RemoteLink r) {
+    remote = r;
+    _remoteSub?.cancel();
+    _remoteSub = r.statusUpdates.listen((j) {
+      if (viaInternet || ip.isEmpty) {
+        viaInternet = true;
+        _apply(j);
+      }
+    });
+  }
+
   Future<void> start() async {
     final prefs = await SharedPreferences.getInstance();
     ip = prefs.getString('aquarium_ip') ?? '';
     _timer?.cancel();
-    if (ip.isEmpty) {
-      notifyListeners();
-      return;
-    }
     await refresh();
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => refresh());
   }
@@ -177,22 +193,54 @@ class AquariumController extends ChangeNotifier {
     }
   }
 
+  /// Em casa, fala direto com o ESP32 pelo Wi-Fi. Se ele não responder e o
+  /// acesso pela internet estiver ligado, usa o que chega pela internet.
   Future<void> refresh() async {
-    if (ip.isEmpty || busy) return;
-    final j = await _get('/api/status');
-    _apply(j);
+    if (busy) return;
+    // No navegador (versão web) não dá para falar direto com o ESP32: só internet.
+    if (ip.isNotEmpty && !kIsWeb) {
+      final j = await _get('/api/status');
+      if (j != null) {
+        viaInternet = false;
+        _apply(j);
+        return;
+      }
+    }
+    final r = remote;
+    if (r != null && r.ready && r.lastStatus != null) {
+      viaInternet = true;
+      _apply(r.lastStatus);
+      return;
+    }
+    viaInternet = false;
+    if (ip.isEmpty && (r == null || !r.configured)) {
+      if (connected || _lastSignature == null) {
+        connected = false;
+        status = kIsWeb
+            ? 'Configure o Acesso pela internet (engrenagem, no alto da tela).'
+            : 'Informe o IP da controladora do aquário.';
+        _lastSignature = 'noip';
+        notifyListeners();
+      }
+      return;
+    }
+    _apply(null);
   }
 
   /// Última resposta recebida; se a nova for igual, as telas não redesenham.
   String? _lastSignature;
 
   void _apply(Map<String, dynamic>? j) {
-    final signature = j == null ? 'offline' : jsonEncode(j);
+    final signature = j == null ? 'offline' : '$viaInternet${jsonEncode(j)}';
     if (signature == _lastSignature) return;
     _lastSignature = signature;
     if (j == null) {
       connected = false;
-      status = 'Sem resposta de $ip. Confira se o ESP32 está ligado e na mesma rede.';
+      status = remote != null && remote!.configured
+          ? (remote!.connected
+              ? 'O ESP32 não respondeu em casa nem pela internet. Ele está ligado?'
+              : 'Sem resposta do ESP32 e sem conexão com o servidor da internet.')
+          : 'Sem resposta de $ip. Confira se o ESP32 está ligado e na mesma rede.';
       notifyListeners();
       return;
     }
@@ -244,7 +292,7 @@ class AquariumController extends ChangeNotifier {
         doser = [];
       }
       connected = true;
-      status = 'Conectada em $ip';
+      status = viaInternet ? 'Conectada pela internet' : 'Conectada em $ip';
     } catch (_) {
       connected = false;
       status = 'Resposta inesperada de $ip. O programa do ESP32 é o mesmo da pasta firmware?';
@@ -253,6 +301,13 @@ class AquariumController extends ChangeNotifier {
   }
 
   Future<void> _send(String path, Map<String, String> query) async {
+    final r = remote;
+    if (viaInternet && r != null && r.ready) {
+      // A resposta chega como um novo estado pelo servidor.
+      r.command(path, query);
+      return;
+    }
+    if (kIsWeb) return;
     busy = true;
     _apply(await _get(path, query));
     busy = false;
@@ -328,6 +383,7 @@ class AquariumController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _remoteSub?.cancel();
     _timer?.cancel();
     super.dispose();
   }

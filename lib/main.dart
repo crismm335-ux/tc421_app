@@ -10,6 +10,8 @@ import 'equipment_page.dart';
 import 'home_page.dart';
 import 'manual_page.dart';
 import 'profiles_page.dart';
+import 'remote.dart';
+import 'remote_panel.dart';
 import 'schedule_page.dart';
 import 'tests_page.dart';
 
@@ -41,6 +43,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   final Tc421Controller controller = Tc421Controller();
   final AquariumController aquarium = AquariumController();
+  final RemoteLink remote = RemoteLink();
 
   /// 0 Início, 1 Luminária, 2 Equipamentos, 3 Dosadora, 4 Animais, 5 Testes.
   int tab = 0;
@@ -54,12 +57,32 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    // Fora de casa, a luminária e o aquário passam pelo ESP32 na internet.
+    aquarium.attachRemote(remote);
+    controller.setRelay(
+        (packet, waitMs) => remote.tcRequest(packet, waitMs, ip: controller.manualIp));
+    remote.addListener(_onRemoteChanged);
     controller.loadSettings().then((_) => controller.connect());
     aquarium.start();
+    remote.load();
+  }
+
+  bool _wasReady = false;
+
+  /// Quando a internet fica pronta, tenta de novo o que não conectou.
+  void _onRemoteChanged() {
+    final ready = remote.ready;
+    if (ready && !_wasReady) {
+      if (!controller.connected && !controller.searching) controller.connect();
+      aquarium.refresh();
+    }
+    _wasReady = ready;
   }
 
   @override
   void dispose() {
+    remote.removeListener(_onRemoteChanged);
+    remote.dispose();
     controller.dispose();
     aquarium.dispose();
     super.dispose();
@@ -151,7 +174,10 @@ class _HomeShellState extends State<HomeShell> {
                 'Conexão',
                 ListView(
                   padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-                  children: [ConnectionPanel(controller: controller)],
+                  children: [
+                    ConnectionPanel(controller: controller),
+                    RemotePanel(remote: remote),
+                  ],
                 ),
                 onBack: () => setState(() => showConnection = false),
                 settings: false)

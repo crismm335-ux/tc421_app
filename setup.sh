@@ -10,8 +10,11 @@ rm -f test/widget_test.dart
 MANIFEST=android/app/src/main/AndroidManifest.xml
 if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
   sed -i 's|android:label="[^"]*"|android:label="AQUA LIGHT"|' "$MANIFEST"
-  sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application android:usesCleartextTraffic="true"|' "$MANIFEST"
+  sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>\n    <application android:usesCleartextTraffic="true"|' "$MANIFEST"
 fi
+
+# Android: código nativo que deixa o app receber o broadcast da TC421.
+cp android_extra/MainActivity.kt android/app/src/main/kotlin/br/fisionit/tc421_app/MainActivity.kt
 
 # iOS pede autorização para falar com aparelhos da rede local.
 PLIST=ios/Runner/Info.plist

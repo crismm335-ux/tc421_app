@@ -10,6 +10,7 @@
  *   - OneWire (Paul Stoffregen)
  *   - DallasTemperature (Miles Burton)
  *   - Adafruit ADS1X15
+ *   - PubSubClient (Nick O'Leary)  -> acesso pela internet
  * Placa: "ESP32 Dev Module" (pacote "esp32" da Espressif).
  *
  * SEGURANÇA: leia o LEIAME.md antes de ligar qualquer coisa na rede elétrica.
@@ -24,10 +25,23 @@
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
 #include <time.h>
+#include <WiFiClientSecure.h>
+#include <WiFiUdp.h>
+#include <HTTPClient.h>
+#include <PubSubClient.h>
+#include <map>
 
 // ======== AJUSTE AQUI ========
-const char* WIFI_SSID = "SUA_REDE";
-const char* WIFI_PASS = "SUA_SENHA";
+// Senhas (Wi-Fi, servidor da internet, alertas) ficam no arquivo segredos.h,
+// na mesma pasta. Copie segredos_exemplo.h para segredos.h e preencha.
+// O segredos.h não vai para o GitHub (está no .gitignore), então o repositório
+// pode ser público sem expor suas senhas.
+#if __has_include("segredos.h")
+#include "segredos.h"
+#else
+#include "segredos_exemplo.h"
+#endif
+
 const bool RELAY_ACTIVE_LOW = true;       // a maioria dos módulos de relé liga com nível baixo
 const char* TIMEZONE = "<-03>3";          // Brasília
 const bool DOSER_ACTIVE_HIGH = true;      // módulo MOSFET das bombas dosadoras liga com nível alto
@@ -120,6 +134,17 @@ bool doseCalib = false;          // a dose atual é calibração (não conta no 
 unsigned long doseStartMs = 0, doseRunMs = 0;
 float doseRunMl = 0;
 String doseMsg = "";
+
+// ---------- pedidos (vindos do Wi-Fi de casa ou da internet) ----------
+bool viaMqtt = false;                    // o pedido atual veio pela internet?
+std::map<String, String> mqttArgs;      // argumentos do pedido que veio pela internet
+bool reqHas(const char* k) { return viaMqtt ? mqttArgs.count(String(k)) > 0 : server.hasArg(k); }
+String reqArg(const char* k) {
+  if (!viaMqtt) return server.arg(k);
+  auto it = mqttArgs.find(String(k));
+  return it == mqttArgs.end() ? String("") : it->second;
+}
+void replyError(const char* msg) { if (!viaMqtt) server.send(400, "text/plain", msg); }
 
 // ---------- utilidades ----------
 void writeRelay(int i, bool on) {
@@ -448,7 +473,7 @@ String alarmsJson() {
   return s;
 }
 
-void sendStatus() {
+String statusJson() {
   int m, d;
   bool timeOk = nowMinute(m, d);
   String j = "{";
@@ -471,8 +496,14 @@ void sendStatus() {
   j += ",\"thermo\":{\"heaterOn\":" + jf(heaterOn) + ",\"heaterOff\":" + jf(heaterOff) + ",\"chillerOn\":" + jf(chillerOn) +
        ",\"chillerOff\":" + jf(chillerOff) + ",\"alarmLo\":" + jf(alarmLo) + ",\"alarmHi\":" + jf(alarmHi) + "}";
   j += ",\"cal\":{\"ph\":" + String(phCal ? "true" : "false") + ",\"ec\":" + String(ecCal ? "true" : "false") + "}";
-  j += ",\"doser\":" + doserJson(m, timeOk) + "}";
-  server.send(200, "application/json", j);
+  j += ",\"doser\":" + doserJson(m, timeOk);
+  j += ",\"remote\":" + String(mqttOk() ? "true" : "false") + "}";
+  return j;
+}
+
+void sendStatus() {
+  if (viaMqtt) { mqttPublishStatus(true); return; }
+  server.send(200, "application/json", statusJson());
 }
 
 String jsonText(String t) { t.replace("\\", "/"); t.replace("\"", "'"); return "\"" + t + "\""; }
@@ -495,13 +526,13 @@ String doserJson(int m, bool timeOk) {
 }
 
 void handleSet() {
-  if (!server.hasArg("id")) { server.send(400, "text/plain", "id?"); return; }
-  int i = server.arg("id").toInt();
-  if (i < 0 || i >= NUM_OUTLETS) { server.send(400, "text/plain", "id invalido"); return; }
-  if (server.hasArg("mode")) { int m = server.arg("mode").toInt(); if (m >= 0 && m <= 3) cfg[i].mode = m; }
-  if (server.hasArg("on")) cfg[i].onMin = constrain(server.arg("on").toInt(), 0, 1439);
-  if (server.hasArg("off")) cfg[i].offMin = constrain(server.arg("off").toInt(), 0, 1439);
-  if (server.hasArg("sec")) cfg[i].doseSec = constrain(server.arg("sec").toInt(), 1, 600);
+  if (!reqHas("id")) { replyError("id?"); return; }
+  int i = reqArg("id").toInt();
+  if (i < 0 || i >= NUM_OUTLETS) { replyError("id invalido"); return; }
+  if (reqHas("mode")) { int m = reqArg("mode").toInt(); if (m >= 0 && m <= 3) cfg[i].mode = m; }
+  if (reqHas("on")) cfg[i].onMin = constrain(reqArg("on").toInt(), 0, 1439);
+  if (reqHas("off")) cfg[i].offMin = constrain(reqArg("off").toInt(), 0, 1439);
+  if (reqHas("sec")) cfg[i].doseSec = constrain(reqArg("sec").toInt(), 1, 600);
   saveOutlet(i);
   runLogic();
   sendStatus();
@@ -509,7 +540,7 @@ void handleSet() {
 
 void handleThermo() {
   auto get = [&](const char* k, float &v, const char* key) {
-    if (server.hasArg(k)) { v = server.arg(k).toFloat(); prefs.putFloat(key, v); }
+    if (reqHas(k)) { v = reqArg(k).toFloat(); prefs.putFloat(key, v); }
   };
   get("hon", heaterOn, "hon"); get("hoff", heaterOff, "hoff");
   get("con", chillerOn, "con"); get("coff", chillerOff, "coff");
@@ -520,16 +551,16 @@ void handleThermo() {
 // /api/cal?type=ph&point=7|4   (com a sonda mergulhada na solução tampão)
 // /api/cal?type=ec&ref=53.0    (com a sonda na solução de referência, em mS/cm)
 void handleCal() {
-  String type = server.arg("type");
-  if (!adsOk) { server.send(400, "text/plain", "ADS1115 nao encontrado"); return; }
+  String type = reqArg("type");
+  if (!adsOk) { replyError("ADS1115 nao encontrado"); return; }
   if (type == "ph") {
     float v = avgVolts(0);
-    if (server.arg("point") == "7") { phV7 = v; prefs.putFloat("phv7", v); }
+    if (reqArg("point") == "7") { phV7 = v; prefs.putFloat("phv7", v); }
     else { phV4 = v; prefs.putFloat("phv4", v); }
     phCal = phV7 > 0 && phV4 > 0 && phV7 != phV4;
     prefs.putBool("phcal", phCal);
   } else if (type == "ec" && !isnan(temperature)) {
-    float ref = server.arg("ref").toFloat();
+    float ref = reqArg("ref").toFloat();
     float v = avgVolts(1);
     if (ref > 0 && v > 0.01) {
       ecK = ref * (1.0 + 0.02 * (temperature - 25.0)) / v;
@@ -543,9 +574,9 @@ void handleTpaStart() { if (!tpaBegin() && tpaMsg == "") tpaMsg = "TPA já em an
 void handleTpaStop() { if (tpaActive()) tpaStop("TPA interrompida"); runLogic(); sendStatus(); }
 void handleTpaConfig() {
   if (!tpaActive()) {
-    if (server.hasArg("liters")) { tpaLiters = constrain(server.arg("liters").toFloat(), 0.5f, 200.0f); prefs.putFloat("tpaL", tpaLiters); }
-    if (server.hasArg("drainLpm")) { tpaDrainLpm = constrain(server.arg("drainLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaD", tpaDrainLpm); }
-    if (server.hasArg("fillLpm")) { tpaFillLpm = constrain(server.arg("fillLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaF", tpaFillLpm); }
+    if (reqHas("liters")) { tpaLiters = constrain(reqArg("liters").toFloat(), 0.5f, 200.0f); prefs.putFloat("tpaL", tpaLiters); }
+    if (reqHas("drainLpm")) { tpaDrainLpm = constrain(reqArg("drainLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaD", tpaDrainLpm); }
+    if (reqHas("fillLpm")) { tpaFillLpm = constrain(reqArg("fillLpm").toFloat(), 0.1f, 100.0f); prefs.putFloat("tpaF", tpaFillLpm); }
   }
   sendStatus();
 }
@@ -554,23 +585,23 @@ void handleAtoReset() { atoFault = false; atoLastStop = millis(); sendStatus(); 
 
 // ---------- API da dosadora ----------
 int doseArgCh() {
-  int c = server.hasArg("ch") ? server.arg("ch").toInt() : -1;
+  int c = reqHas("ch") ? reqArg("ch").toInt() : -1;
   return (c >= 0 && c < DOSE_CH) ? c : -1;
 }
 
 // /api/doser/set?ch=0&name=Cálcio&en=1&ml=10&n=4&start=480&end=1200&rate=60&cap=1000
 void handleDoserSet() {
   int c = doseArgCh();
-  if (c < 0) { server.send(400, "text/plain", "ch invalido"); return; }
-  if (server.hasArg("name")) { String n = server.arg("name"); n.trim(); if (n.length() > 0) dose[c].name = n.substring(0, 24); }
-  if (server.hasArg("en")) dose[c].en = server.arg("en") == "1";
-  if (server.hasArg("ml")) dose[c].mlDay = constrain(server.arg("ml").toFloat(), 0.0f, 500.0f);
-  if (server.hasArg("n")) dose[c].doses = constrain(server.arg("n").toInt(), 1, 24);
-  if (server.hasArg("start")) dose[c].startMin = constrain(server.arg("start").toInt(), 0, 1439);
-  if (server.hasArg("end")) dose[c].endMin = constrain(server.arg("end").toInt(), 0, 1439);
-  if (server.hasArg("rate")) dose[c].rate = constrain(server.arg("rate").toFloat(), 1.0f, 1000.0f);
-  if (server.hasArg("cap")) {
-    dose[c].capMl = constrain(server.arg("cap").toFloat(), 10.0f, 20000.0f);
+  if (c < 0) { replyError("ch invalido"); return; }
+  if (reqHas("name")) { String n = reqArg("name"); n.trim(); if (n.length() > 0) dose[c].name = n.substring(0, 24); }
+  if (reqHas("en")) dose[c].en = reqArg("en") == "1";
+  if (reqHas("ml")) dose[c].mlDay = constrain(reqArg("ml").toFloat(), 0.0f, 500.0f);
+  if (reqHas("n")) dose[c].doses = constrain(reqArg("n").toInt(), 1, 24);
+  if (reqHas("start")) dose[c].startMin = constrain(reqArg("start").toInt(), 0, 1439);
+  if (reqHas("end")) dose[c].endMin = constrain(reqArg("end").toInt(), 0, 1439);
+  if (reqHas("rate")) dose[c].rate = constrain(reqArg("rate").toFloat(), 1.0f, 1000.0f);
+  if (reqHas("cap")) {
+    dose[c].capMl = constrain(reqArg("cap").toFloat(), 10.0f, 20000.0f);
     if (dose[c].leftMl > dose[c].capMl) dose[c].leftMl = dose[c].capMl;
   }
   // Doses de hoje que já passaram não são repetidas com a agenda nova.
@@ -592,7 +623,7 @@ void handleDoserRefill() {
 // Dose avulsa: /api/doser/dose?ch=1&ml=2.5
 void handleDoserDose() {
   int c = doseArgCh();
-  float ml = server.arg("ml").toFloat();
+  float ml = reqArg("ml").toFloat();
   if (c >= 0 && ml > 0 && ml <= 100) { dosePending[c] += ml; doseMsg = ""; }
   sendStatus();
 }
@@ -612,6 +643,179 @@ void handleDoserStop() {
   for (int c = 0; c < DOSE_CH; c++) dosePending[c] = 0;
   doseMsg = "Dosagem interrompida";
   sendStatus();
+}
+
+// ---------- acesso pela internet (MQTT) ----------
+// Tópicos: aqualight/<DEVICE_ID>/status  (estado, retido)
+//          aqualight/<DEVICE_ID>/online  (1 = ligado, 0 = caiu; retido)
+//          aqualight/<DEVICE_ID>/cmd     (comando: "/api/set?id=3&mode=1")
+//          aqualight/<DEVICE_ID>/tc/req  (pacote para a luminária TC421)
+//          aqualight/<DEVICE_ID>/tc/rep  (resposta da luminária)
+WiFiClientSecure mqttNet;
+PubSubClient mqtt(mqttNet);
+WiFiUDP tcUdp;
+unsigned long mqttLastTry = 0, mqttLastStatus = 0;
+String mqttLastPayload = "";
+String tcPendingId = "";
+unsigned long tcDeadline = 0;
+
+bool mqttEnabled() { return strlen(MQTT_HOST) > 0; }
+bool mqttOk() { return mqttEnabled() && mqtt.connected(); }
+String topic(const char* t) { return String("aqualight/") + DEVICE_ID + "/" + t; }
+
+// Publica o estado. force = mesmo que nada tenha mudado.
+void mqttPublishStatus(bool force) {
+  if (!mqttOk()) return;
+  String j = statusJson();
+  if (!force && j == mqttLastPayload && millis() - mqttLastStatus < 60000) return;
+  mqttLastPayload = j; mqttLastStatus = millis();
+  mqtt.publish(topic("status").c_str(), j.c_str(), true);
+}
+
+String urlDecode(const String& in) {
+  String out; out.reserve(in.length());
+  for (unsigned i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if (c == '+') out += ' ';
+    else if (c == '%' && i + 2 < in.length()) { out += (char)strtol(in.substring(i + 1, i + 3).c_str(), nullptr, 16); i += 2; }
+    else out += c;
+  }
+  return out;
+}
+
+// "a=1&b=x" -> mqttArgs
+void parseQuery(const String& q) {
+  mqttArgs.clear();
+  int start = 0;
+  while (start < (int)q.length()) {
+    int amp = q.indexOf('&', start); if (amp < 0) amp = q.length();
+    String part = q.substring(start, amp);
+    int eq = part.indexOf('=');
+    if (eq > 0) mqttArgs[urlDecode(part.substring(0, eq))] = urlDecode(part.substring(eq + 1));
+    start = amp + 1;
+  }
+}
+
+typedef void (*Handler)();
+struct Route { const char* path; Handler fn; };
+void handleStatusMqtt() { sendStatus(); }
+const Route ROUTES[] = {
+  {"/api/status", handleStatusMqtt}, {"/api/set", handleSet}, {"/api/thermo", handleThermo}, {"/api/cal", handleCal},
+  {"/api/atoreset", handleAtoReset}, {"/api/tpa/start", handleTpaStart}, {"/api/tpa/stop", handleTpaStop},
+  {"/api/tpa/config", handleTpaConfig}, {"/api/doser/set", handleDoserSet}, {"/api/doser/refill", handleDoserRefill},
+  {"/api/doser/dose", handleDoserDose}, {"/api/doser/calib", handleDoserCalib}, {"/api/doser/stop", handleDoserStop},
+};
+
+int hexVal(char c) { return c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : (c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1)); }
+
+void mqttMessage(char* t, byte* payload, unsigned int len) {
+  String msg; msg.reserve(len);
+  for (unsigned i = 0; i < len; i++) msg += (char)payload[i];
+  String tp(t);
+  if (tp == topic("cmd")) {
+    int qm = msg.indexOf('?');
+    String path = qm < 0 ? msg : msg.substring(0, qm);
+    parseQuery(qm < 0 ? String("") : msg.substring(qm + 1));
+    for (const Route& r : ROUTES) {
+      if (path == r.path) { viaMqtt = true; r.fn(); viaMqtt = false; break; }
+    }
+    mqttArgs.clear();
+  } else if (tp == topic("tc/req")) {
+    // Pacote para a TC421: "n=<id>&w=<ms de espera>&ip=<opcional>&hex=<bytes>"
+    parseQuery(msg);
+    String hex = mqttArgs["hex"];
+    uint8_t buf[64]; int n = 0;
+    for (unsigned i = 0; i + 1 < hex.length() && n < 64; i += 2) {
+      int a = hexVal(hex[i]), b = hexVal(hex[i + 1]);
+      if (a < 0 || b < 0) break;
+      buf[n++] = (uint8_t)(a * 16 + b);
+    }
+    IPAddress dest(255, 255, 255, 255);
+    if (mqttArgs["ip"].length()) dest.fromString(mqttArgs["ip"]);
+    while (tcUdp.parsePacket() > 0) tcUdp.flush();      // descarta respostas velhas
+    tcUdp.beginPacket(dest, 5000); tcUdp.write(buf, n); tcUdp.endPacket();
+    int wait = mqttArgs["w"].toInt();
+    if (wait > 0) { tcPendingId = mqttArgs["n"]; tcDeadline = millis() + min(wait, 3000); }
+    mqttArgs.clear();
+  }
+}
+
+// Repassa a resposta da TC421 para o app (só a primeira que vier da controladora).
+void tcTick() {
+  if (tcPendingId.length() == 0) return;
+  int size = tcUdp.parsePacket();
+  if (size > 0) {
+    uint8_t buf[64]; int n = tcUdp.read(buf, sizeof(buf));
+    if (n > 4 && buf[0] == 0x88 && buf[1] == 0) {
+      String hex; const char* digits = "0123456789abcdef";
+      for (int i = 0; i < n; i++) { hex += digits[buf[i] >> 4]; hex += digits[buf[i] & 15]; }
+      mqtt.publish(topic("tc/rep").c_str(), ("n=" + tcPendingId + "&hex=" + hex).c_str());
+      tcPendingId = "";
+      return;
+    }
+  }
+  if ((long)(millis() - tcDeadline) > 0) {
+    mqtt.publish(topic("tc/rep").c_str(), ("n=" + tcPendingId + "&hex=").c_str());
+    tcPendingId = "";
+  }
+}
+
+void mqttTick() {
+  if (!mqttEnabled() || WiFi.status() != WL_CONNECTED) return;
+  if (!mqtt.connected()) {
+    if (millis() - mqttLastTry < 15000 && mqttLastTry != 0) return;
+    // A conexão pode travar o programa por alguns segundos: nunca com uma bomba dosando ou na TPA.
+    if (doseRunning >= 0 || tpaActive()) return;
+    mqttLastTry = millis();
+    String id = String(DEVICE_ID) + "-esp32";
+    if (mqtt.connect(id.c_str(), MQTT_USER, MQTT_PASS, topic("online").c_str(), 1, true, "0")) {
+      mqtt.publish(topic("online").c_str(), "1", true);
+      mqtt.subscribe(topic("cmd").c_str());
+      mqtt.subscribe(topic("tc/req").c_str());
+      mqttPublishStatus(true);
+    }
+    return;
+  }
+  mqtt.loop();
+  tcTick();
+  if (millis() - mqttLastStatus >= 5000) mqttPublishStatus(false);
+}
+
+// ---------- alertas no celular (ntfy) ----------
+String alertsSent = "";            // alertas já avisados (para não repetir)
+unsigned long alertsLastCheck = 0;
+
+void ntfySend(const String& text) {
+  WiFiClientSecure c; c.setInsecure();
+  HTTPClient http;
+  if (!http.begin(c, String("https://ntfy.sh/") + NTFY_TOPIC)) return;
+  http.addHeader("Title", "Aquario");
+  http.addHeader("Priority", "high");
+  http.addHeader("Tags", "warning");
+  http.setTimeout(5000);
+  http.POST(text);
+  http.end();
+}
+
+void alertsTick() {
+  if (strlen(NTFY_TOPIC) == 0 || WiFi.status() != WL_CONNECTED) return;
+  if (millis() - alertsLastCheck < 30000) return;
+  if (doseRunning >= 0) return;                  // o envio leva ~1 s: espera a dose terminar
+  alertsLastCheck = millis();
+  String now = alarmsJson();                     // ["a","b"]
+  // Avisa cada alerta novo uma vez; quando some, pode avisar de novo depois.
+  String body = now.substring(1, now.length() - 1);
+  String kept = "";
+  int start = 0;
+  while (start < (int)body.length()) {
+    int a = body.indexOf('"', start); if (a < 0) break;
+    int b = body.indexOf('"', a + 1); if (b < 0) break;
+    String item = body.substring(a + 1, b);
+    kept += "|" + item + "|";
+    if (alertsSent.indexOf("|" + item + "|") < 0) ntfySend(item);
+    start = b + 1;
+  }
+  alertsSent = kept;
 }
 
 // ---------- setup / loop ----------
@@ -660,6 +864,14 @@ void setup() {
   server.on("/api/doser/calib", handleDoserCalib);
   server.on("/api/doser/stop", handleDoserStop);
   server.begin();
+  tcUdp.begin(5000);
+  if (mqttEnabled()) {
+    mqttNet.setInsecure();          // conexão criptografada; o certificado do servidor não é conferido
+    mqtt.setServer(MQTT_HOST, MQTT_PORT);
+    mqtt.setBufferSize(4096);
+    mqtt.setKeepAlive(30);
+    mqtt.setCallback(mqttMessage);
+  }
   Serial.print("Pronto. IP: ");
   Serial.println(WiFi.localIP());
 }
@@ -672,4 +884,6 @@ void loop() {
   }
   readSensors();
   if (millis() - lastLogic >= 500) { lastLogic = millis(); runLogic(); }
+  mqttTick();
+  alertsTick();
 }

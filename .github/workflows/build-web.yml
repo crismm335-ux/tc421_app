@@ -1,0 +1,64 @@
+name: Build Web (iPhone)
+
+# Versão web do app: abre no Safari do iPhone (ou em qualquer navegador) e
+# usa sempre o acesso pela internet. Publica no GitHub Pages, igual ao app de
+# finanças: https://<seu-usuario>.github.io/<nome-do-repositorio>/
+#
+# Antes da primeira vez: Settings -> Pages -> Source: "GitHub Actions".
+# (Em conta gratuita, o GitHub Pages só funciona com o repositório público.)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Gerar o projeto web
+        run: |
+          flutter create --project-name tc421_app --platforms=web --org br.fisionit .
+          rm -f test/widget_test.dart
+          # Nome e cores do app quando salvo na tela de início do iPhone.
+          sed -i 's|"name": "[^"]*"|"name": "AQUA LIGHT"|; s|"short_name": "[^"]*"|"short_name": "Aqua Light"|; s|"background_color": "[^"]*"|"background_color": "#030A1C"|; s|"theme_color": "[^"]*"|"theme_color": "#030A1C"|' web/manifest.json
+          sed -i 's|<title>[^<]*</title>|<title>AQUA LIGHT</title>|; s|content="tc421_app"|content="AQUA LIGHT"|' web/index.html
+
+      - name: Baixar dependências
+        run: flutter pub get
+
+      # O site fica numa subpasta com o nome do repositório.
+      - name: Compilar o site
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

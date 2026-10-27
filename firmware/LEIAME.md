@@ -88,11 +88,41 @@ Como funciona e o que ele protege:
 - Se o ESP32 ficar desligado na hora de uma dose, ela é pulada (não dobra depois).
 - A contagem de "hoje" volta a zero se o ESP32 reiniciar; o que tem no recipiente fica salvo.
 
+## Acesso fora de casa (internet) e alertas
+
+(O README do projeto também explica a versão web para iPhone.)
+
+Em casa o app fala direto com o ESP32 e com a luminária pelo Wi-Fi. Fora de casa ele passa por um
+servidor MQTT gratuito na internet, o HiveMQ Cloud: o ESP32 manda o estado para lá e recebe os
+comandos, e também repassa os comandos para a luminária TC421. O app troca sozinho entre os dois.
+
+1. **Crie o servidor (uma vez):** entre em console.hivemq.cloud, crie uma conta e um cluster do plano
+   **Serverless (Free)**. Anote o **Cluster URL** (algo como `abc123.s1.eu.hivemq.cloud`).
+   Em **Access Management**, crie um usuário e uma senha com permissão de **Publish and Subscribe**.
+2. **No ESP32** (arquivo `segredos.h`): preencha `MQTT_HOST`,
+   `MQTT_USER`, `MQTT_PASS` e invente um `DEVICE_ID` só seu, sem espaços (ex.: `aquario-k7p3x9`).
+   Instale a biblioteca **PubSubClient** e grave de novo.
+3. **No app:** engrenagem (Conexão) → **Acesso pela internet** → os mesmos 4 dados → **Salvar e conectar**.
+   Quando aparecer "Pronto", teste com o Wi-Fi do celular desligado.
+
+**Alertas no celular (opcional, app ntfy):** instale o app **ntfy** (Play Store ou App Store), toque em
+"+" e assine um tópico com um nome difícil de adivinhar (ex.: `aquario-k7p3x9w2`). Coloque esse nome em
+`NTFY_TOPIC` no `segredos.h`. Ele avisa quando aparece um alerta (temperatura fora do limite,
+galão vazio, reposição travada, dosadora acabando), mesmo com o Aqua Light fechado.
+Quem souber o nome do tópico também vê os avisos, por isso use um nome difícil.
+
+Bom saber:
+- Usuário e senha protegem os comandos. A conexão é criptografada; o ESP32 não confere o certificado
+  do servidor (para simplificar).
+- Pela internet, enviar a programação para a luminária demora mais (uns 10 a 30 segundos) e a
+  simulação do dia pode engasgar. O resto funciona igual.
+- Se o ESP32 cair, o app mostra "Aquário sem conexão" e a última leitura recebida fica de lado.
+
 ## Gravar o programa
 
 1. Instale o Arduino IDE e o pacote de placas "esp32" (Espressif) pelo Gerenciador de Placas.
-2. Instale as bibliotecas OneWire, DallasTemperature e Adafruit ADS1X15.
-3. Abra `aquario_esp32/aquario_esp32.ino` e troque `SUA_REDE` e `SUA_SENHA` pelos dados do seu Wi-Fi.
+2. Instale as bibliotecas OneWire, DallasTemperature, Adafruit ADS1X15 e PubSubClient.
+3. Na pasta `aquario_esp32`, copie `segredos_exemplo.h` para `segredos.h` e troque `SUA_REDE` e `SUA_SENHA` pelos dados do seu Wi-Fi (e, se for usar, os do acesso pela internet e do ntfy). Abra `aquario_esp32.ino` no Arduino IDE.
 4. Escolha a placa "ESP32 Dev Module", conecte o ESP32 por USB e clique em Carregar.
 5. Abra o Monitor Serial (115200). Ele mostra o IP do ESP32. Anote esse IP, e no roteador reserve esse IP para ele.
 6. No app, aba Equipamentos, informe o IP.
@@ -112,7 +142,7 @@ Como funciona e o que ele protege:
 
 ## Limites desta versão
 
-- Não existe senha na API: qualquer aparelho na sua rede consegue ligar e desligar as tomadas. Use uma rede Wi-Fi com senha forte e não exponha o ESP32 à internet.
+- Não existe senha na API local: qualquer aparelho na sua rede consegue ligar e desligar as tomadas. Use uma rede Wi-Fi com senha forte. Para acessar de fora, use o acesso pela internet (MQTT, com usuário e senha); nunca abra uma porta do roteador para o ESP32.
 - A programação por horário depende da hora da internet (NTP). Sem internet depois de ligar, os horários e a dosadora não disparam até a hora ser obtida.
 - O programa foi conferido quanto à escrita (compila), mas não com as bombas reais.
 - O programa não foi testado com os equipamentos reais. Teste tudo aos poucos, como descrito acima.

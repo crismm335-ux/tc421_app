@@ -13,3 +13,8 @@ Payload/
 *.zip
 *.ipa
 *.apk
+web/
+windows/
+
+# Senhas do ESP32 (fica só no seu computador)
+firmware/aquario_esp32/segredos.h

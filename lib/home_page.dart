@@ -31,7 +31,7 @@ class HomePage extends StatelessWidget {
     final c = controller;
     final a = aquarium;
     final masterOn = !(c.liveActive && c.liveMode == 'Desligado');
-    final ip = c.manualIp ?? 'rede local';
+    final ip = c.viaInternet ? 'pela internet' : (c.manualIp ?? 'rede local');
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -308,7 +308,9 @@ class HomePage extends StatelessWidget {
                                         color: Aqua.text)),
                                 Text(
                                     a.connected
-                                        ? '● ESP32${a.ip.isEmpty ? '' : ' · ${a.ip}'}'
+                                        ? (a.viaInternet
+                                            ? '● ESP32 · pela internet'
+                                            : '● ESP32${a.ip.isEmpty ? '' : ' · ${a.ip}'}')
                                         : 'Toque para conectar o ESP32',
                                     style: TextStyle(
                                         fontSize: 12,

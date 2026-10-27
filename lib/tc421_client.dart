@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'tc421_protocol.dart';
 
 /// Conversa com a controladora por UDP.
@@ -18,6 +20,13 @@ class Tc421Client {
   InternetAddress? target;
 
   bool get isOpen => _socket != null;
+
+  /// Ponte pela internet: o ESP32 repassa o pacote para a luminária e devolve
+  /// a resposta. Usada quando a luminária não responde na rede local.
+  Future<Uint8List?> Function(Uint8List packet, int waitMs)? relay;
+
+  /// Está falando com a luminária pela internet?
+  bool viaRelay = false;
 
   /// Define o IP de destino. Texto vazio volta ao broadcast.
   void setTarget(String? ip) {
@@ -61,6 +70,12 @@ class Tc421Client {
   }
 
   void _send(Uint8List packet) {
+    final r = relay;
+    if (viaRelay && r != null) {
+      r(packet, 0);
+      return;
+    }
+    if (_socket == null) return;
     _socket!.send(packet, target ?? InternetAddress('255.255.255.255'),
         Tc421Protocol.port);
   }
@@ -72,6 +87,11 @@ class Tc421Client {
     Duration timeout = const Duration(milliseconds: 600),
   }) async {
     final test = accept ?? Tc421Protocol.isDeviceReply;
+    final relayFn = relay;
+    if (viaRelay && relayFn != null) {
+      final r = await relayFn(packet, timeout.inMilliseconds);
+      return (r != null && test(r)) ? r : null;
+    }
     final reply = _incoming.stream.where(test).first.timeout(
           timeout,
           onTimeout: () => Uint8List(0),
@@ -89,16 +109,40 @@ class Tc421Client {
 
   /// Procura a controladora na rede. Retorna o MAC ou null.
   Future<String?> discover({int attempts = 3}) async {
-    await open();
-    for (var i = 0; i < attempts; i++) {
-      final r = await _request(
-        Tc421Protocol.search(),
-        accept: (b) => Tc421Protocol.parseSearchReply(b) != null,
-      );
-      if (r != null) {
-        mac = Tc421Protocol.parseSearchReply(r);
-        return mac;
+    // Primeiro na rede de casa (no navegador isso não existe)...
+    viaRelay = false;
+    if (!kIsWeb) {
+      try {
+        await open();
+        for (var i = 0; i < attempts; i++) {
+          final r = await _request(
+            Tc421Protocol.search(),
+            accept: (b) => Tc421Protocol.parseSearchReply(b) != null,
+          );
+          if (r != null) {
+            mac = Tc421Protocol.parseSearchReply(r);
+            return mac;
+          }
+        }
+      } on SocketException {
+        // Sem rede local (ex.: só dados móveis): tenta pela internet.
       }
+    }
+    // ...depois pela internet, através do ESP32.
+    if (relay != null) {
+      viaRelay = true;
+      for (var i = 0; i < 2; i++) {
+        final r = await _request(
+          Tc421Protocol.search(),
+          accept: (b) => Tc421Protocol.parseSearchReply(b) != null,
+          timeout: const Duration(milliseconds: 1500),
+        );
+        if (r != null) {
+          mac = Tc421Protocol.parseSearchReply(r);
+          return mac;
+        }
+      }
+      viaRelay = false;
     }
     return null;
   }

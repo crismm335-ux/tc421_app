@@ -70,6 +70,56 @@ Visual do painel neon (Aqua Light). Abas de baixo: **Início, Luminária, Equipa
 - **Animais e Testes:** cada um na sua aba.
 - A engrenagem no topo das telas abre a Conexão da luminária (IP, hora, nova busca).
 
+## iPhone sem instalar nada (versão web)
+
+O workflow **Build Web (iPhone)** gera o app como site e publica no **GitHub Pages**, igual ao app de
+finanças. Ele abre no Safari, fica na tela de início como um app e não expira. Na versão web tudo passa
+pela internet (o navegador não fala direto com o ESP32 nem com a luminária), então configure antes o
+**Acesso fora de casa**, logo abaixo.
+
+1. No GitHub, no repositório: **Settings → Pages → Source: GitHub Actions** (uma vez só).
+   Em conta gratuita o Pages exige repositório **público**. Pode deixar público com segurança: as senhas
+   do ESP32 ficam no `segredos.h`, que não é enviado, e as do app ficam só no celular.
+2. Envie o projeto e espere o **Build Web (iPhone)** ficar verde.
+3. No iPhone, abra `https://<seu-usuario>.github.io/<nome-do-repositorio>/` no Safari →
+   Compartilhar → **Adicionar à Tela de Início**.
+4. Abra pelo ícone → engrenagem → **Acesso pela internet** → os mesmos dados do ESP32.
+
+Depois de uma atualização, se o iPhone mostrar a versão antiga, feche o app e abra de novo.
+
+## Senhas do ESP32
+
+Na pasta `firmware/aquario_esp32`, copie `segredos_exemplo.h` para `segredos.h` e coloque ali o Wi-Fi,
+os dados do servidor e o tópico do ntfy. O `segredos.h` fica só no seu computador (está no `.gitignore`).
+
+## Acesso fora de casa (internet)
+
+Em casa o app fala direto com o ESP32 e com a luminária pelo Wi-Fi. Fora de casa ele passa por um
+servidor MQTT gratuito na internet, o HiveMQ Cloud: o ESP32 manda o estado para lá e recebe os
+comandos, e também repassa os comandos para a luminária TC421. O app troca sozinho entre os dois.
+
+1. **Crie o servidor (uma vez):** entre em console.hivemq.cloud, crie uma conta e um cluster do plano
+   **Serverless (Free)**. Anote o **Cluster URL** (algo como `abc123.s1.eu.hivemq.cloud`).
+   Em **Access Management**, crie um usuário e uma senha com permissão de **Publish and Subscribe**.
+2. **No ESP32** (arquivo `firmware/aquario_esp32/segredos.h`, veja "Senhas do ESP32"): preencha `MQTT_HOST`,
+   `MQTT_USER`, `MQTT_PASS` e invente um `DEVICE_ID` só seu, sem espaços (ex.: `aquario-k7p3x9`).
+   Instale a biblioteca **PubSubClient** e grave de novo.
+3. **No app:** engrenagem (Conexão) → **Acesso pela internet** → os mesmos 4 dados → **Salvar e conectar**.
+   Quando aparecer "Pronto", teste com o Wi-Fi do celular desligado.
+
+**Alertas no celular (opcional, app ntfy):** instale o app **ntfy** (Play Store ou App Store), toque em
+"+" e assine um tópico com um nome difícil de adivinhar (ex.: `aquario-k7p3x9w2`). Coloque esse nome em
+`NTFY_TOPIC` no `segredos.h`. Ele avisa quando aparece um alerta (temperatura fora do limite,
+galão vazio, reposição travada, dosadora acabando), mesmo com o Aqua Light fechado.
+Quem souber o nome do tópico também vê os avisos, por isso use um nome difícil.
+
+Bom saber:
+- Usuário e senha protegem os comandos. A conexão é criptografada; o ESP32 não confere o certificado
+  do servidor (para simplificar).
+- Pela internet, enviar a programação para a luminária demora mais (uns 10 a 30 segundos) e a
+  simulação do dia pode engasgar. O resto funciona igual.
+- Se o ESP32 cair, o app mostra "Aquário sem conexão" e a última leitura recebida fica de lado.
+
 ## Pontos não confirmados em hardware
 
 - O repositório de referência só usa broadcast. Não sei se a controladora responde a pacotes
